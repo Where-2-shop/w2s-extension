@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="header">
+    <span class="logo">W<span class="red">2</span>S</span>
+    <span class="header-title">Where2Shop</span>
+  </div>
+
+  <div id="view-loading" class="view center">
+    <div class="spinner"></div>
+  </div>
+
+  <div id="view-empty" class="view center hidden">
+    <div class="empty-icon">🛒</div>
+    <p class="empty-title">Basket is empty</p>
+    <p class="empty-sub">Open Where2Shop, add items,<br>then come back here.</p>
+    <button id="btn-open-w2s" class="btn btn-primary">Open Where2Shop →</button>
+  </div>
+
+  <div id="view-basket" class="view hidden">
+    <div id="items-list" class="items-list"></div>
+    <div class="actions">
+      <button id="btn-compare" class="btn btn-primary">
+        Compare Coles · Woolworths · Aldi
+      </button>
+    </div>
+  </div>
+
+  <div id="view-comparing" class="view center hidden">
+    <div class="spinner"></div>
+    <p class="comparing-label">Comparing prices…</p>
+  </div>
+
+  <div id="view-result" class="view hidden">
+    <div id="winner-card" class="winner-card"></div>
+    <div id="store-totals" class="store-totals"></div>
+    <div class="actions">
+      <button id="btn-shop" class="btn btn-primary"></button>
+      <button id="btn-back" class="btn btn-ghost">← Edit basket</button>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
