@@ -57,27 +57,38 @@ function setProgress(done, total) {
   if (bar) bar.style.width = `${Math.round((done / total) * 100)}%`;
 }
 
+// ── Helpers ────────────────────────────────────────────────────────────────
+function getXsrf() {
+  // Woolworths stocke le token XSRF dans un cookie lisible par JS
+  const m = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
 // ── API Woolworths ─────────────────────────────────────────────────────────
 async function addBatch(batch) {
   // batch: [{ Stockcode: number, Quantity: number }]
+  const xsrf = getXsrf();
+  const headers = {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+  };
+  if (xsrf) headers["X-XSRF-TOKEN"] = xsrf;
+
   try {
     const res = await fetch("/apis/ui/Basket/items", {
       method: "POST",
       credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-      },
+      headers,
       body: JSON.stringify({ items: batch }),
     });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
-      console.error("[W2S] Basket API error:", res.status, txt);
+      console.error(`[W2S] Basket API ${res.status}:`, txt.slice(0, 300));
       return false;
     }
     return true;
   } catch (err) {
-    console.error("[W2S] Basket fetch error:", err);
+    console.error("[W2S] Basket fetch error:", err.message);
     return false;
   }
 }
@@ -108,7 +119,7 @@ async function run() {
   }
 
   const overlay = createOverlay();
-  let done = 0;
+  let done = 0, errors = 0;
 
   for (let i = 0; i < items.length; i += BATCH_SIZE) {
     const batch = items.slice(i, i + BATCH_SIZE);
@@ -118,6 +129,7 @@ async function run() {
     }));
 
     const ok = await addBatch(payload);
+    if (!ok) errors += batch.length;
 
     for (const it of batch) {
       log(it.name, ok ? "ok" : "err");
@@ -129,10 +141,24 @@ async function run() {
   }
 
   const doneEl = document.getElementById("w2s-done");
-  if (doneEl) doneEl.style.display = "block";
-  await sleep(1800);
+  if (doneEl) {
+    if (errors === items.length) {
+      // Tout a échoué — afficher l'erreur + lien console
+      doneEl.style.color = "#e01a22";
+      doneEl.textContent = "⚠ Cart API failed — check console (F12) for details";
+    } else if (errors > 0) {
+      doneEl.style.color = "#d97706";
+      doneEl.textContent = `⚠ ${items.length - errors}/${items.length} added — see console for errors`;
+    } else {
+      doneEl.textContent = "✓ Done — redirecting to cart…";
+    }
+    doneEl.style.display = "block";
+  }
+  await sleep(errors > 0 ? 4000 : 1800);
   overlay.remove();
-  window.location.href = "https://www.woolworths.com.au/shop/cart";
+  if (errors < items.length) {
+    window.location.href = "https://www.woolworths.com.au/shop/cart";
+  }
 }
 
 run().catch(err => console.error("[W2S] woolworths.js error:", err));
