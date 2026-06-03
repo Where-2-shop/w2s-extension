@@ -1,85 +1,85 @@
 // content/woolworths.js — injecté sur woolworths.com.au
-// Lit pending_cart depuis chrome.storage et ajoute les produits au panier
 
-const BATCH_SIZE = 5;   // items par appel API
-const DELAY_MS   = 600; // délai entre batches
+const BATCH_SIZE = 5;
+const DELAY_MS   = 700;
 
-function sleep(ms) {
-  return new Promise(r => setTimeout(r, ms));
-}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ── Overlay de progression ─────────────────────────────────────────────────
-function createOverlay(total) {
-  const el = document.createElement("div");
-  el.id = "w2s-overlay";
-  el.innerHTML = `
+function createOverlay() {
+  const wrap = document.createElement("div");
+  wrap.id = "w2s-overlay";
+  wrap.innerHTML = `
     <div style="
-      position:fixed;top:0;left:0;right:0;bottom:0;z-index:999999;
+      position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483647;
       background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;
-      font-family:-apple-system,sans-serif;
+      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
     ">
       <div style="
         background:#fff;border-radius:16px;padding:24px;width:320px;
         box-shadow:0 20px 60px rgba(0,0,0,.3);
       ">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
-          <span style="font-size:20px;font-weight:900;">W<span style="color:#e01a22;">2</span>S</span>
-          <span style="font-size:15px;font-weight:600;color:#1a1917;">Adding to cart…</span>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+          <span style="font-size:20px;font-weight:900;font-family:Arial Black,sans-serif;">
+            W<span style="color:#e01a22;">2</span>S
+          </span>
+          <span style="font-size:15px;font-weight:600;color:#1a1917;">Adding to Woolworths cart…</span>
         </div>
-        <div id="w2s-progress-bar" style="
-          height:4px;background:#f5f3ef;border-radius:2px;overflow:hidden;margin-bottom:14px;
-        ">
-          <div id="w2s-bar-fill" style="
-            height:100%;width:0%;background:#007837;border-radius:2px;
-            transition:width .3s ease;
-          "></div>
+        <div style="height:4px;background:#f0ede8;border-radius:2px;overflow:hidden;margin-bottom:14px;">
+          <div id="w2s-bar" style="height:100%;width:0%;background:#007837;border-radius:2px;transition:width .3s;"></div>
         </div>
-        <div id="w2s-log" style="
-          font-size:12px;color:#888;max-height:160px;overflow-y:auto;
-          display:flex;flex-direction:column;gap:4px;
-        "></div>
-        <div id="w2s-done" style="display:none;margin-top:12px;text-align:center;">
-          <p style="font-size:14px;font-weight:600;color:#007837;margin:0 0 8px;">
-            ✓ Done! Redirecting to cart…
-          </p>
+        <div id="w2s-log" style="font-size:12px;color:#555;max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;"></div>
+        <div id="w2s-done" style="display:none;margin-top:12px;text-align:center;font-size:14px;font-weight:600;color:#007837;">
+          ✓ Done — redirecting to cart…
         </div>
       </div>
     </div>
   `;
-  document.body.appendChild(el);
-  return el;
+  document.body.appendChild(wrap);
+  return wrap;
 }
 
-function logItem(name, status) {
-  const log = document.getElementById("w2s-log");
-  if (!log) return;
-  const line = document.createElement("div");
-  line.style.cssText = "display:flex;align-items:center;gap:6px;";
-  const icon = status === "ok" ? "✓" : status === "err" ? "✗" : "·";
+function log(name, status) {
+  const el = document.getElementById("w2s-log");
+  if (!el) return;
+  const icon  = status === "ok" ? "✓" : status === "err" ? "✗" : "·";
   const color = status === "ok" ? "#007837" : status === "err" ? "#e01a22" : "#888";
-  line.innerHTML = `<span style="color:${color};font-weight:700;">${icon}</span><span style="color:#333;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}</span>`;
-  log.appendChild(line);
-  log.scrollTop = log.scrollHeight;
+  const row = document.createElement("div");
+  row.style.cssText = "display:flex;gap:6px;align-items:center;";
+  row.innerHTML = `<span style="color:${color};font-weight:700;flex-shrink:0;">${icon}</span>
+    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}</span>`;
+  el.appendChild(row);
+  el.scrollTop = el.scrollHeight;
 }
 
 function setProgress(done, total) {
-  const fill = document.getElementById("w2s-bar-fill");
-  if (fill) fill.style.width = `${Math.round((done / total) * 100)}%`;
+  const bar = document.getElementById("w2s-bar");
+  if (bar) bar.style.width = `${Math.round((done / total) * 100)}%`;
 }
 
-// ── Appel API Woolworths ────────────────────────────────────────────────────
-async function addBatch(items) {
-  // items: [{ Stockcode: number, Quantity: number }]
-  const res = await fetch("/apis/ui/Basket/items", {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept":       "application/json",
-    },
-    body: JSON.stringify({ items }),
-  });
-  return res.ok;
+// ── API Woolworths ─────────────────────────────────────────────────────────
+async function addBatch(batch) {
+  // batch: [{ Stockcode: number, Quantity: number }]
+  try {
+    const res = await fetch("/apis/ui/Basket/items", {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({ items: batch }),
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      console.error("[W2S] Basket API error:", res.status, txt);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("[W2S] Basket fetch error:", err);
+    return false;
+  }
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
@@ -87,23 +87,29 @@ async function run() {
   const data = await chrome.storage.local.get("pending_cart");
   const pending = data.pending_cart;
 
-  // Ignorer si pas pour Woolworths ou trop vieux (>10 min)
   if (!pending || pending.store !== "woolworths") return;
   if (Date.now() - pending.ts > 600_000) {
     chrome.storage.local.remove("pending_cart");
     return;
   }
 
-  // Consommer immédiatement pour éviter double-run
-  chrome.storage.local.remove("pending_cart");
+  // Consommer pour éviter double-run (page reload, SPA navigation…)
+  await chrome.storage.local.remove("pending_cart");
 
-  const items = pending.items; // [{ product_id, name, qty }]
+  const items = pending.items;
   if (!items?.length) return;
 
-  const overlay = createOverlay(items.length);
+  // Attendre que document.body soit disponible
+  if (!document.body) {
+    await new Promise(res => {
+      const obs = new MutationObserver(() => { if (document.body) { obs.disconnect(); res(); } });
+      obs.observe(document.documentElement, { childList: true });
+    });
+  }
+
+  const overlay = createOverlay();
   let done = 0;
 
-  // Découper en batches
   for (let i = 0; i < items.length; i += BATCH_SIZE) {
     const batch = items.slice(i, i + BATCH_SIZE);
     const payload = batch.map(it => ({
@@ -111,15 +117,10 @@ async function run() {
       Quantity:  it.qty,
     }));
 
-    let ok = false;
-    try {
-      ok = await addBatch(payload);
-    } catch (_) {
-      ok = false;
-    }
+    const ok = await addBatch(payload);
 
     for (const it of batch) {
-      logItem(it.name, ok ? "ok" : "err");
+      log(it.name, ok ? "ok" : "err");
       done++;
       setProgress(done, items.length);
     }
@@ -127,7 +128,6 @@ async function run() {
     if (i + BATCH_SIZE < items.length) await sleep(DELAY_MS);
   }
 
-  // Afficher le message final et rediriger vers le panier
   const doneEl = document.getElementById("w2s-done");
   if (doneEl) doneEl.style.display = "block";
   await sleep(1800);
@@ -135,9 +135,4 @@ async function run() {
   window.location.href = "https://www.woolworths.com.au/shop/cart";
 }
 
-// Attendre que la page soit prête
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", run);
-} else {
-  run();
-}
+run().catch(err => console.error("[W2S] woolworths.js error:", err));

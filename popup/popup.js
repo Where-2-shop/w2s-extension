@@ -92,15 +92,20 @@ function renderResult(result, basket) {
                               : winner === "woolworths" ? "#007837"
                               : "#1a3a6b";
     shopBtn.onclick = () => {
-      chrome.runtime.sendMessage({ type: "OPEN_STORE", store: winner, items: winnerItems });
-      window.close();
+      // Attendre l'ack du background avant de fermer le popup
+      chrome.runtime.sendMessage(
+        { type: "OPEN_STORE", store: winner, items: winnerItems },
+        () => window.close()
+      );
     };
   } else {
     // No winner: let user pick manually
     shopBtn.textContent = "Open Where2Shop";
     shopBtn.onclick = () => {
-      chrome.tabs.create({ url: "https://app.where2shop.crea-dapp.com" });
-      window.close();
+      chrome.tabs.create(
+        { url: "https://app.where2shop.crea-dapp.com" },
+        () => window.close()
+      );
     };
   }
 
