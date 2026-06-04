@@ -3,6 +3,9 @@
 
 const API = "https://api.where2shop.crea-dapp.com";
 
+// Replace with your DoorDash affiliate URL once created
+const ALDI_DOORDASH_URL = "YOUR_DOORDASH_AFFILIATE_LINK";
+
 const STORE_LABELS = { coles: "Coles", woolworths: "Woolworths", aldi: "Aldi" };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -153,9 +156,27 @@ function renderResult(result, basket) {
         window.close();
       };
     } else {
-      // Aldi : pas de commande en ligne → liste à télécharger
-      actionBtn.textContent = "Get List →";
+      // Aldi : liste téléchargeable + lien DoorDash affilié
+      actionBtn.textContent = "↓ List";
       actionBtn.onclick = () => downloadList(buildStoreItems("aldi"), "Aldi", totals.aldi);
+
+      const doorDashBtn = document.createElement("a");
+      doorDashBtn.href = ALDI_DOORDASH_URL;
+      doorDashBtn.target = "_blank";
+      doorDashBtn.rel = "noopener noreferrer";
+      doorDashBtn.className = "btn-shop-inline";
+      doorDashBtn.style.cssText = `background:#ff3008;text-decoration:none;display:flex;align-items:center;justify-content:center;`;
+      doorDashBtn.textContent = "DoorDash →";
+
+      const btnGroup = document.createElement("div");
+      btnGroup.style.cssText = "display:flex;gap:4px;flex-shrink:0;";
+      btnGroup.appendChild(actionBtn);
+      btnGroup.appendChild(doorDashBtn);
+
+      row.appendChild(info);
+      row.appendChild(btnGroup);
+      totalsEl.appendChild(row);
+      continue;
     }
 
     row.appendChild(info);
