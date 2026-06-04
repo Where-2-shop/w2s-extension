@@ -221,6 +221,7 @@ async function run() {
 
   let successes = 0;
   let incapsulaBlocked = false;
+  const failedItems = [];
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
@@ -236,9 +237,10 @@ async function run() {
       successes++;
       logItem(item.name, true);
     } else if (result && typeof result === "object" && !result.ok) {
-      // 200 OK mais failedItems — afficher l'erreur Coles dans le log
+      failedItems.push(item);
       logItem(`${item.name} — ${result.message ?? result.errorCode ?? "unavailable"}`, false);
     } else {
+      failedItems.push(item);
       logItem(item.name, false);
     }
     setProgress(i + 1, items.length);
@@ -286,10 +288,28 @@ async function run() {
       </div>
     `;
   } else {
-    doneEl.style.color = errors > 0 ? "#d97706" : "#e01a22";
-    doneEl.innerHTML = `✓ ${successes} item${successes > 1 ? "s" : ""} added —
-      <a href="/checkout/cart" style="color:inherit;font-weight:700;text-decoration:underline;"
-         onclick="document.getElementById('w2s-overlay').remove()">View Cart →</a>`;
+    const hasPartial = failedItems.length > 0;
+    doneEl.style.textAlign = "left";
+    doneEl.style.fontSize = "13px";
+    doneEl.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${hasPartial ? "10px" : "0"};">
+        <span style="font-weight:700;color:#e01a22;">
+          ✓ ${successes} item${successes > 1 ? "s" : ""} added
+        </span>
+        <a href="/checkout/cart"
+           style="font-size:12px;font-weight:700;color:#e01a22;text-decoration:underline;"
+           onclick="document.getElementById('w2s-overlay').remove()">View Cart →</a>
+      </div>
+      ${hasPartial ? `
+        <div style="border-top:1px solid #f0ede8;padding-top:8px;">
+          <div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">
+            Add manually (${failedItems.length} unavailable)
+          </div>
+          <ul style="margin:0;padding:0 0 0 14px;display:flex;flex-direction:column;gap:3px;font-size:12px;color:#555;">
+            ${failedItems.map(it => `<li>${it.qty > 1 ? `${it.qty}× ` : ""}${it.name}</li>`).join("")}
+          </ul>
+        </div>` : ""}
+    `;
   }
   doneEl.style.display = "block";
 }
