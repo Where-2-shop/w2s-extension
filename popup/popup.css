@@ -135,11 +135,34 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 10px;
+  padding: 6px 8px 6px 10px;
   background: #fff;
   border-radius: 8px;
   border: 1px solid #ede9e3;
+  gap: 8px;
 }
+.total-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.btn-shop-inline {
+  flex-shrink: 0;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  opacity: 0.9;
+  transition: opacity .15s;
+  white-space: nowrap;
+}
+.btn-shop-inline:hover { opacity: 1; }
+.btn-shop-inline:active { opacity: 0.75; }
 .total-row.winner { border-width: 2px; }
 .total-row.winner.coles       { border-color: #e01a22; }
 .total-row.winner.woolworths  { border-color: #007837; }
@@ -152,6 +175,7 @@ body {
 
 /* ── Buttons ────────────────────────────────────────────── */
 .actions { display: flex; flex-direction: column; gap: 6px; }
+.actions-row { display: flex; gap: 6px; }
 .btn {
   width: 100%; padding: 11px; border: none; border-radius: 10px;
   font-size: 13px; font-weight: 600; cursor: pointer;
@@ -165,3 +189,5 @@ body {
   color: #888;
   border: 1px solid #ddd;
 }
+.btn-share { flex: 1; font-size: 12px; padding: 9px 8px; }
+.btn-back  { flex: 1; font-size: 12px; padding: 9px 8px; }
