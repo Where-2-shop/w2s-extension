@@ -22,6 +22,7 @@ function renderBasket(basket) {
     const row = document.createElement("div");
     row.className = "item-row";
     row.innerHTML = `
+      ${p.image_url ? `<img class="item-img" src="${p.image_url}" alt="" onerror="this.style.display='none'">` : ""}
       <span class="item-qty">${entry.qty}×</span>
       <span class="item-name" title="${p.name}">${p.name}</span>
       ${p.price != null ? `<span class="item-price">$${(p.price * entry.qty).toFixed(2)}</span>` : ""}
