@@ -14,6 +14,71 @@ function randomUUID() {
   });
 }
 
+const MISSED_KEY = "w2s_coles_missed";
+const MISSED_TTL = 7_200_000; // 2h
+
+// ── Missed items sticky panel ─────────────────────────────────────────────────
+function showMissedPanel(missedItems) {
+  if (document.getElementById("w2s-missed")) return;
+
+  const panel = document.createElement("div");
+  panel.id = "w2s-missed";
+  panel.style.cssText = `
+    position:fixed;bottom:20px;right:20px;z-index:2147483646;
+    width:264px;border-radius:12px;overflow:hidden;
+    box-shadow:0 8px 32px rgba(0,0,0,.22);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  `;
+
+  function render(collapsed) {
+    panel.innerHTML = `
+      <div id="w2s-missed-hdr" style="
+        background:#e01a22;padding:10px 12px;
+        display:flex;align-items:center;justify-content:space-between;cursor:pointer;
+      ">
+        <div style="display:flex;align-items:center;gap:7px;">
+          <span style="font-size:13px;font-weight:900;font-family:Arial Black,sans-serif;color:#fff;">
+            W<span style="color:#ffaaaa;">2</span>S
+          </span>
+          <span style="font-size:12px;font-weight:600;color:#fff;">
+            Out of stock · ${missedItems.length} item${missedItems.length > 1 ? "s" : ""}
+          </span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:10px;color:rgba(255,255,255,.75);">${collapsed ? "▲" : "▼"}</span>
+          <button id="w2s-missed-close" style="
+            background:none;border:none;color:rgba(255,255,255,.75);
+            font-size:15px;cursor:pointer;padding:0 2px;line-height:1;
+          " title="Dismiss">✕</button>
+        </div>
+      </div>
+      ${!collapsed ? `
+        <div style="background:#fff;padding:10px 12px 12px;">
+          <div style="font-size:11px;color:#999;margin-bottom:7px;line-height:1.4;">
+            Not added to your cart — check these in-store or find alternatives:
+          </div>
+          <ul style="margin:0;padding:0 0 0 14px;display:flex;flex-direction:column;gap:4px;font-size:12px;color:#333;">
+            ${missedItems.map(it => `<li>${it.qty > 1 ? `${it.qty}× ` : ""}${it.name}</li>`).join("")}
+          </ul>
+        </div>
+      ` : ""}
+    `;
+
+    panel.querySelector("#w2s-missed-hdr").onclick = e => {
+      if (e.target.closest("#w2s-missed-close")) return;
+      render(!collapsed);
+    };
+    panel.querySelector("#w2s-missed-close").onclick = e => {
+      e.stopPropagation();
+      chrome.storage.local.remove(MISSED_KEY);
+      panel.remove();
+    };
+  }
+
+  render(false);
+  document.body.appendChild(panel);
+}
+
 // ── Overlay ───────────────────────────────────────────────────────────────────
 function createOverlay() {
   const wrap = document.createElement("div");
@@ -39,7 +104,7 @@ function createOverlay() {
         </div>
         <div id="w2s-status" style="font-size:12px;color:#888;margin-bottom:8px;"></div>
         <div id="w2s-log" style="font-size:12px;color:#555;max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;"></div>
-        <div id="w2s-done" style="display:none;margin-top:12px;text-align:center;font-size:14px;font-weight:600;"></div>
+        <div id="w2s-done" style="display:none;margin-top:12px;"></div>
       </div>
     </div>
   `;
@@ -70,15 +135,10 @@ function setProgress(done, total) {
 }
 
 // ── Coles BFF API ─────────────────────────────────────────────────────────────
-// Endpoint vérifié via DevTools : PATCH /api/bff/trolley/store/{storeId}
-// Le storeId vient du cookie fulfillmentStoreId (ex: "0298")
-// Headers requis : ocp-apim-subscription-key (statique), cusp-* (depuis cookies)
-
-const OCP_KEY     = "eae83861d1cd4de6bb9cd8a2cd6f041e";
+const OCP_KEY      = "eae83861d1cd4de6bb9cd8a2cd6f041e";
 const DSCH_CHANNEL = "coles.online.1site.desktop";
 
 function buildHeaders() {
-  // Cookie names verified via DevTools — update if Coles renames them
   const sessionId = getCookie("sessionId");
   const visitorId = getCookie("visitorId");
   const userId    = getCookie("dsch-ccpuserid");
@@ -98,7 +158,6 @@ function buildHeaders() {
   return headers;
 }
 
-// Récupère l'état actuel du trolley pour extraire slotId / slotCutOffTime
 async function fetchTrolleyState(storeId) {
   try {
     const res = await fetch(`/api/bff/trolley/store/${storeId}?sortBy=recentlyAdded`, {
@@ -123,15 +182,13 @@ function isIncapsulaResponse(text) {
 }
 
 async function addItem(item, storeId, trolley) {
-  // productId doit être un entier (pas une string) — l'API Coles retourne 200 mais
-  // n'ajoute rien si c'est une string ou si type:"ADD" est absent.
+  // productId doit être un entier — l'API Coles retourne 200 sans rien ajouter si c'est une string
   const pid = parseInt(item.product_id, 10);
   const body = {
     ageGateVerified: false,
     swapBehaviour:   false,
     items: [{ actions: [{ type: "ADD", quantity: item.qty, productId: pid }] }],
   };
-  // Inclure les infos de slot si disponibles (évite une erreur 422 quand un slot est déjà réservé)
   if (trolley?.slotId)                    body.slotId                    = trolley.slotId;
   if (trolley?.slotCutOffTime)            body.slotCutOffTime            = trolley.slotCutOffTime;
   if (trolley?.reservationExpirationTime) body.reservationExpirationTime = trolley.reservationExpirationTime;
@@ -148,7 +205,7 @@ async function addItem(item, storeId, trolley) {
     const text = await res.text();
 
     if (isIncapsulaResponse(text)) {
-      console.warn("[W2S] Incapsula intercept — visite coles.com.au manuellement d'abord");
+      console.warn("[W2S] Incapsula intercept");
       return "incapsula";
     }
     if (res.ok) {
@@ -160,16 +217,16 @@ async function addItem(item, storeId, trolley) {
         const actioned = result.actionedItems ?? [];
         if (failed.length > 0) {
           const err = failed[0].error ?? {};
-          console.warn(`[W2S] ✗ ${item.name} (id=${pid}) → 200 mais FAILED: [${err.errorCode}] ${err.message}`);
+          console.warn(`[W2S] ✗ ${item.name} (id=${pid}) → FAILED: [${err.errorCode}] ${err.message}`);
           return { ok: false, errorCode: err.errorCode, message: err.message };
         }
         if (actioned.length > 0) {
-          console.log(`[W2S] ✓ ${item.name} (id=${pid}) → ajouté (actionedItems=${actioned.length})`);
+          console.log(`[W2S] ✓ ${item.name} (id=${pid}) → ajouté`);
         } else {
           console.log(`[W2S] ✓ ${item.name} (id=${pid}) → 200 OK`, text.slice(0, 300));
         }
       } catch {
-        console.log(`[W2S] ✓ ${item.name} (id=${pid}) → ${res.status} (réponse non-JSON)`);
+        console.log(`[W2S] ✓ ${item.name} (id=${pid}) → ${res.status} (non-JSON)`);
       }
       return true;
     }
@@ -182,9 +239,26 @@ async function addItem(item, storeId, trolley) {
 
 // ── Main ───────────────────────────────────────────────────────────────────────
 async function run() {
-  const data = await chrome.storage.local.get("pending_cart");
-  const pending = data.pending_cart;
-  if (!pending || pending.store !== "coles") return;
+  const stored = await chrome.storage.local.get(["pending_cart", MISSED_KEY]);
+
+  // Pas de panier en attente → juste afficher le panel des items manqués si sauvegardé
+  if (!stored.pending_cart || stored.pending_cart.store !== "coles") {
+    const saved = stored[MISSED_KEY];
+    if (saved?.items?.length && Date.now() - saved.ts < MISSED_TTL) {
+      if (!document.body) {
+        await new Promise(res => {
+          const obs = new MutationObserver(() => { if (document.body) { obs.disconnect(); res(); } });
+          obs.observe(document.documentElement, { childList: true });
+        });
+      }
+      showMissedPanel(saved.items);
+    } else if (saved) {
+      chrome.storage.local.remove(MISSED_KEY);
+    }
+    return;
+  }
+
+  const pending = stored.pending_cart;
   if (Date.now() - pending.ts > 600_000) { chrome.storage.local.remove("pending_cart"); return; }
   await chrome.storage.local.remove("pending_cart");
 
@@ -201,22 +275,19 @@ async function run() {
   createOverlay();
   await sleep(1200);
 
-  // Dump all cookie names to spot mismatches in cusp-* cookie lookups
   const allCookieNames = document.cookie.split(";").map(c => c.trim().split("=")[0]).filter(Boolean);
   console.log("[W2S Coles] All cookie names:", allCookieNames.join(", "));
 
   const storeId = getCookie("fulfillmentStoreId") || "0298";
   const shoppingMethod = getCookie("shopping-method") ?? "unknown";
-  console.log(`[W2S] Coles: storeId=${storeId} | shopping-method=${shoppingMethod} | ${items.length} items | fulfillmentStoreId cookie ${getCookie("fulfillmentStoreId") ? "✓" : "✗ MISSING (using fallback 0298)"}`);
+  console.log(`[W2S] storeId=${storeId} | shopping-method=${shoppingMethod} | ${items.length} items`);
 
   setStatus("Fetching trolley state…");
   const trolley = await fetchTrolleyState(storeId);
   if (trolley) {
-    const keys = Object.keys(trolley);
-    console.log("[W2S] trolley state keys:", keys.join(", "));
-    console.log("[W2S] trolley slotId:", trolley.slotId ?? "none", "| items count:", (trolley.items ?? []).length);
+    console.log("[W2S] trolley slotId:", trolley.slotId ?? "none", "| items:", (trolley.items ?? []).length);
   } else {
-    console.warn("[W2S] trolley state: GET failed (null) — proceeding without slot info");
+    console.warn("[W2S] trolley GET failed — proceeding without slot info");
   }
 
   let successes = 0;
@@ -238,13 +309,20 @@ async function run() {
       logItem(item.name, true);
     } else if (result && typeof result === "object" && !result.ok) {
       failedItems.push(item);
-      logItem(`${item.name} — ${result.message ?? result.errorCode ?? "unavailable"}`, false);
+      logItem(`${item.name} — out of stock`, false);
     } else {
       failedItems.push(item);
       logItem(item.name, false);
     }
     setProgress(i + 1, items.length);
     await sleep(300);
+  }
+
+  // Sauvegarder les items non ajoutés — le panel réapparaîtra sur les pages suivantes
+  if (failedItems.length > 0) {
+    await chrome.storage.local.set({ [MISSED_KEY]: { items: failedItems, ts: Date.now() } });
+  } else {
+    await chrome.storage.local.remove(MISSED_KEY);
   }
 
   setStatus("");
@@ -254,62 +332,49 @@ async function run() {
   const errors = items.length - successes;
 
   if (incapsulaBlocked) {
-    doneEl.style.color = "#888";
-    doneEl.style.textAlign = "left";
-    doneEl.style.fontSize = "12px";
-    doneEl.style.fontWeight = "400";
+    doneEl.style.cssText = "color:#888;text-align:left;font-size:12px;font-weight:400;";
     doneEl.innerHTML = `
-      <div style="font-weight:700;font-size:13px;color:#e01a22;margin-bottom:6px;">
-        ⚠ Accès bloqué par Coles
-      </div>
+      <div style="font-weight:700;font-size:13px;color:#e01a22;margin-bottom:6px;">⚠ Accès bloqué par Coles</div>
       <div style="font-size:11px;color:#555;margin-bottom:10px;line-height:1.5;">
         Ouvrez <strong>coles.com.au</strong> dans un onglet normal,<br>
         puis revenez dans l'extension et cliquez <strong>Shop →</strong> à nouveau.
       </div>
-      <div style="font-weight:700;font-size:12px;color:#1a1917;margin-bottom:6px;">Liste à ajouter manuellement :</div>
+      <div style="font-weight:700;font-size:12px;color:#1a1917;margin-bottom:6px;">À ajouter manuellement :</div>
       <ul style="margin:0;padding:0 0 0 16px;display:flex;flex-direction:column;gap:3px;font-size:12px;">
         ${items.map(it => `<li>${it.qty > 1 ? `${it.qty}× ` : ""}${it.name}</li>`).join("")}
       </ul>
     `;
   } else if (errors === items.length) {
-    doneEl.style.color = "#888";
-    doneEl.style.textAlign = "left";
-    doneEl.style.fontSize = "12px";
-    doneEl.style.fontWeight = "400";
+    doneEl.style.cssText = "color:#888;text-align:left;font-size:12px;font-weight:400;";
     doneEl.innerHTML = `
-      <div style="font-weight:700;font-size:13px;color:#1a1917;margin-bottom:8px;">
-        Add these items manually:
-      </div>
-      <ul style="margin:0;padding:0 0 0 16px;display:flex;flex-direction:column;gap:3px;">
+      <div style="font-weight:700;font-size:13px;color:#1a1917;margin-bottom:8px;">Out of stock — add manually:</div>
+      <ul style="margin:0;padding:0 0 0 16px;display:flex;flex-direction:column;gap:3px;font-size:12px;">
         ${items.map(it => `<li>${it.qty > 1 ? `${it.qty}× ` : ""}${it.name}</li>`).join("")}
       </ul>
-      <div style="margin-top:12px;font-size:11px;color:#888;">
-        ⚙ F12 → Network → chercher la requête PATCH /api/bff/trolley/…
-      </div>
     `;
   } else {
-    const hasPartial = failedItems.length > 0;
-    doneEl.style.textAlign = "left";
-    doneEl.style.fontSize = "13px";
+    doneEl.style.cssText = "text-align:left;font-size:13px;";
     doneEl.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${hasPartial ? "10px" : "0"};">
-        <span style="font-weight:700;color:#e01a22;">
-          ✓ ${successes} item${successes > 1 ? "s" : ""} added
-        </span>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${failedItems.length ? "10px" : "0"};">
+        <span style="font-weight:700;color:#e01a22;">✓ ${successes} item${successes > 1 ? "s" : ""} added</span>
         <a href="/checkout/cart"
            style="font-size:12px;font-weight:700;color:#e01a22;text-decoration:underline;"
            onclick="document.getElementById('w2s-overlay').remove()">View Cart →</a>
       </div>
-      ${hasPartial ? `
+      ${failedItems.length ? `
         <div style="border-top:1px solid #f0ede8;padding-top:8px;">
-          <div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">
-            Add manually (${failedItems.length} unavailable)
+          <div style="font-size:11px;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">
+            Out of stock · ${failedItems.length} item${failedItems.length > 1 ? "s" : ""}
           </div>
           <ul style="margin:0;padding:0 0 0 14px;display:flex;flex-direction:column;gap:3px;font-size:12px;color:#555;">
             ${failedItems.map(it => `<li>${it.qty > 1 ? `${it.qty}× ` : ""}${it.name}</li>`).join("")}
           </ul>
+          <div style="margin-top:7px;font-size:11px;color:#aaa;">The list stays visible on this page ↘</div>
         </div>` : ""}
     `;
+
+    // Afficher le panel sticky maintenant (sera aussi visible sur les pages suivantes)
+    if (failedItems.length) showMissedPanel(failedItems);
   }
   doneEl.style.display = "block";
 }
