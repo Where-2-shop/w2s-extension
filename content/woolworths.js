@@ -1,11 +1,8 @@
 // content/woolworths.js — injecté sur woolworths.com.au
-// Stratégie DOM : navigue vers chaque produit via searchTerm et clique "Add to trolley"
-
-const DELAY_BETWEEN_ITEMS_MS = 2000;
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// ── Overlay de progression ─────────────────────────────────────────────────
+// ── Overlay ────────────────────────────────────────────────────────────────
 function createOverlay() {
   const wrap = document.createElement("div");
   wrap.id = "w2s-overlay";
@@ -30,9 +27,7 @@ function createOverlay() {
         </div>
         <div id="w2s-status" style="font-size:12px;color:#888;margin-bottom:8px;"></div>
         <div id="w2s-log" style="font-size:12px;color:#555;max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;"></div>
-        <div id="w2s-done" style="display:none;margin-top:12px;text-align:center;font-size:14px;font-weight:600;color:#007837;">
-          ✓ Done — redirecting to cart…
-        </div>
+        <div id="w2s-done" style="display:none;margin-top:12px;text-align:center;font-size:14px;font-weight:600;"></div>
       </div>
     </div>
   `;
@@ -45,15 +40,21 @@ function setStatus(text) {
   if (el) el.textContent = text;
 }
 
-function logItem(name, status) {
+function logItem(name, ok, substitute = false) {
   const el = document.getElementById("w2s-log");
   if (!el) return;
-  const icon  = status === "ok" ? "✓" : status === "err" ? "✗" : "·";
-  const color = status === "ok" ? "#007837" : status === "err" ? "#e01a22" : "#888";
   const row = document.createElement("div");
-  row.style.cssText = "display:flex;gap:6px;align-items:center;";
-  row.innerHTML = `<span style="color:${color};font-weight:700;flex-shrink:0;">${icon}</span>
-    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}</span>`;
+  row.style.cssText = "display:flex;gap:6px;align-items:flex-start;";
+  if (substitute) {
+    row.innerHTML = `
+      <span style="color:#007837;font-weight:700;flex-shrink:0;">~</span>
+      <span style="font-size:11px;color:#888;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+            title="${name}">${name} <em style="font-style:italic;">(alt.)</em></span>`;
+  } else {
+    row.innerHTML = `
+      <span style="color:${ok ? "#007837" : "#e01a22"};font-weight:700;flex-shrink:0;">${ok ? "✓" : "✗"}</span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}</span>`;
+  }
   el.appendChild(row);
   el.scrollTop = el.scrollHeight;
 }
@@ -63,81 +64,28 @@ function setProgress(done, total) {
   if (bar) bar.style.width = `${Math.round((done / total) * 100)}%`;
 }
 
-// ── Recherche un produit par Stockcode dans les résultats de la page ────────
-// Retourne le bouton "Add to trolley" du produit correspondant, ou null
-function findAddButton(stockcode) {
-  // Woolworths stocke le stockcode dans data-stockcode ou data-productid
-  const selectors = [
-    `[data-stockcode="${stockcode}"]`,
-    `[data-productid="${stockcode}"]`,
-    `[data-product-stockcode="${stockcode}"]`,
-  ];
-
-  for (const sel of selectors) {
-    const card = document.querySelector(sel);
-    if (card) {
-      // Chercher le bouton add dans la carte
-      const btn = card.querySelector(
-        'button[aria-label*="add" i], button[aria-label*="trolley" i], ' +
-        'button.add-to-cart-button, button[class*="add-to-cart"], ' +
-        'button[class*="AddToCart"], button[class*="addToCart"]'
-      );
-      if (btn) return btn;
-    }
-  }
-
-  // Fallback : chercher tous les boutons "Add to trolley" et matcher par data attribute
-  const allBtns = document.querySelectorAll(
-    'button[aria-label*="add" i], button[aria-label*="trolley" i]'
-  );
-  for (const btn of allBtns) {
-    const container = btn.closest('[data-stockcode], [data-productid]');
-    if (!container) continue;
-    const sc = container.dataset.stockcode || container.dataset.productid;
-    if (sc && String(sc) === String(stockcode)) return btn;
-  }
-
-  return null;
-}
-
-// ── Attend qu'un sélecteur apparaisse dans le DOM ─────────────────────────
-function waitForSelector(selector, timeout = 8000) {
-  return new Promise((resolve, reject) => {
-    const el = document.querySelector(selector);
-    if (el) { resolve(el); return; }
-    const obs = new MutationObserver(() => {
-      const found = document.querySelector(selector);
-      if (found) { obs.disconnect(); resolve(found); }
-    });
-    obs.observe(document.body, { childList: true, subtree: true });
-    setTimeout(() => { obs.disconnect(); reject(new Error(`Timeout: ${selector}`)); }, timeout);
-  });
-}
-
-// ── Tente d'ajouter un item via API directe (si connue) ───────────────────
-async function tryApiAdd(item, xsrf) {
-  // On teste plusieurs endpoints connus de Woolworths
-  const endpoints = [
-    { url: "/apis/ui/Basket/items",     body: { items: [{ Stockcode: parseInt(item.product_id, 10), Quantity: item.qty }] } },
-    { url: "/apis/ui/Trolley/items",    body: { items: [{ Stockcode: parseInt(item.product_id, 10), Quantity: item.qty }] } },
-    { url: "/api/ui/v2/Basket/items",   body: { items: [{ Stockcode: parseInt(item.product_id, 10), Quantity: item.qty }] } },
-  ];
-
+// ── Ajoute un item via l'API Woolworths ────────────────────────────────────
+async function addItem(item, xsrf) {
   const headers = { "Content-Type": "application/json", "Accept": "application/json" };
   if (xsrf) headers["X-XSRF-TOKEN"] = xsrf;
 
-  for (const ep of endpoints) {
-    try {
-      const res = await fetch(ep.url, {
-        method: "POST", credentials: "include", headers,
-        body: JSON.stringify(ep.body),
-      });
-      if (res.ok) {
-        console.log(`[W2S] ✓ API success: ${ep.url}`);
-        return true;
-      }
-      console.log(`[W2S] ${ep.url} → ${res.status}`);
-    } catch (_) {}
+  try {
+    const res = await fetch("/api/v3/ui/trolley/update", {
+      method: "POST",
+      credentials: "include",
+      headers,
+      body: JSON.stringify({
+        items: [{ stockcode: parseInt(item.product_id, 10), quantity: item.qty, source: "ww-sm:ext:where2shop" }],
+      }),
+    });
+    const text = await res.text();
+    if (res.ok) {
+      console.log(`[W2S] ✓ ${item.name} → ${res.status}`, text.slice(0, 200));
+      return true;
+    }
+    console.warn(`[W2S] ✗ ${item.name} → ${res.status}`, text.slice(0, 200));
+  } catch (err) {
+    console.error(`[W2S] error for ${item.name}:`, err.message);
   }
   return false;
 }
@@ -160,87 +108,57 @@ async function run() {
     });
   }
 
-  const overlay = createOverlay();
-  let done = 0, errors = 0;
+  createOverlay();
+  let successes = 0;
+  let alternatives = 0;
+
+  await sleep(1200);
+
   const xsrf = (document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/) || [])[1];
+  const isGuest = !xsrf;
+  console.log(`[W2S] ${items.length} items | ${isGuest ? "guest session" : "logged in"}`);
 
-  for (const item of items) {
-    setStatus(`Searching: ${item.name}`);
-
-    // 1. Essai via API directe (rapide, silencieux)
-    const apiOk = await tryApiAdd(item, xsrf ? decodeURIComponent(xsrf) : null);
-    if (apiOk) {
-      logItem(item.name, "ok");
-      done++;
-      setProgress(done, items.length);
-      await sleep(400);
-      continue;
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    setStatus(item.name);
+    const ok = await addItem(item, xsrf ? decodeURIComponent(xsrf) : null);
+    if (ok) {
+      successes++;
+      if (item.substituted) alternatives++;
     }
-
-    // 2. Fallback : navigation vers la page de recherche + clic DOM
-    const searchUrl = `/shop/search/products?searchTerm=${encodeURIComponent(item.name)}&pageNumber=1`;
-    try {
-      // Naviguer vers la recherche dans un iframe invisible
-      // (on reste sur la même page, pas de navigation complète)
-      const iframe = document.createElement("iframe");
-      iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;";
-      iframe.src = searchUrl;
-      document.body.appendChild(iframe);
-
-      // Attendre que l'iframe charge suffisamment
-      await sleep(3000);
-
-      // Essayer de trouver un bouton dans l'iframe
-      let iframeBtn = null;
-      try {
-        const iDoc = iframe.contentDocument || iframe.contentWindow?.document;
-        if (iDoc) {
-          const btns = iDoc.querySelectorAll('button[aria-label*="Add" i]');
-          iframeBtn = btns[0];
-        }
-      } catch (_) {}
-
-      if (iframeBtn) {
-        iframeBtn.click();
-        await sleep(800);
-        logItem(item.name, "ok");
-      } else {
-        errors++;
-        logItem(item.name, "err");
-        console.warn(`[W2S] Could not find add button for: ${item.name}`);
-      }
-
-      iframe.remove();
-    } catch (err) {
-      errors++;
-      logItem(item.name, "err");
-      console.error(`[W2S] DOM fallback failed for ${item.name}:`, err.message);
-    }
-
-    done++;
-    setProgress(done, items.length);
-    await sleep(DELAY_BETWEEN_ITEMS_MS);
+    logItem(item.name, ok, ok && item.substituted);
+    setProgress(i + 1, items.length);
+    await sleep(300);
   }
 
   setStatus("");
   const doneEl = document.getElementById("w2s-done");
-  if (doneEl) {
-    if (errors === items.length) {
-      doneEl.style.color = "#e01a22";
-      doneEl.innerHTML = "⚠ Could not add items automatically.<br><small>Check console (Cmd+Option+J) for endpoint info.</small>";
-    } else if (errors > 0) {
-      doneEl.style.color = "#d97706";
-      doneEl.textContent = `⚠ ${items.length - errors}/${items.length} added`;
-    } else {
-      doneEl.textContent = "✓ Done — redirecting to cart…";
-    }
-    doneEl.style.display = "block";
-  }
+  if (!doneEl) return;
 
-  await sleep(errors > 0 ? 5000 : 1800);
-  overlay.remove();
-  if (errors < items.length) {
-    window.location.href = "https://www.woolworths.com.au/shop/cart";
+  if (successes === 0) {
+    doneEl.style.cssText = "color:#e01a22;font-size:13px;font-weight:600;";
+    doneEl.textContent = "⚠ Could not add items. Check console (F12).";
+    doneEl.style.display = "block";
+    await sleep(5000);
+    document.getElementById("w2s-overlay")?.remove();
+  } else {
+    const altNote = alternatives > 0
+      ? ` · <span style="font-weight:400;color:#888;">${alternatives} alternative${alternatives > 1 ? "s" : ""}</span>`
+      : "";
+    doneEl.style.cssText = "text-align:left;font-size:13px;";
+    doneEl.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-weight:700;color:#007837;">✓ ${successes} added${altNote}</span>
+        <a href="/shop/cart"
+           style="font-size:12px;font-weight:700;color:#007837;text-decoration:underline;"
+           onclick="document.getElementById('w2s-overlay').remove()">View Trolley →</a>
+      </div>
+      ${alternatives > 0 ? `
+        <div style="margin-top:7px;font-size:11px;color:#aaa;line-height:1.4;">
+          ~ exact product not found at Woolworths — similar item added instead.
+        </div>` : ""}
+    `;
+    doneEl.style.display = "block";
   }
 }
 
