@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Where2Shop",
   "short_name": "W2S",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Compare Coles, Woolworths & Aldi — auto-fill your cart at the cheapest store.",
 
   "permissions": ["storage", "tabs"],
