@@ -1,0 +1,42 @@
+name: Package Extension
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version from manifest
+        id: version
+        run: echo "version=$(jq -r .version manifest.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Build zip
+        run: |
+          zip -r where2shop-v${{ steps.version.outputs.version }}.zip \
+            manifest.json \
+            background.js \
+            content/ \
+            popup/ \
+            icons/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: where2shop-v${{ steps.version.outputs.version }}
+          path: where2shop-v${{ steps.version.outputs.version }}.zip
+          retention-days: 90
+
+      - name: Create or update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Where2Shop v${{ steps.version.outputs.version }}
+          files: where2shop-v${{ steps.version.outputs.version }}.zip
+          make_latest: true
