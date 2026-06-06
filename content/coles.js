@@ -1,6 +1,9 @@
 // content/coles.js — injecté sur coles.com.au
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function esc(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
 
 function getCookie(name) {
   const m = document.cookie.match(new RegExp("(?:^|;\\s*)" + name + "=([^;]+)"));
@@ -58,7 +61,7 @@ function showMissedPanel(missedItems) {
             Not added to your cart — check these in-store or find alternatives:
           </div>
           <ul style="margin:0;padding:0 0 0 14px;display:flex;flex-direction:column;gap:4px;font-size:12px;color:#333;">
-            ${missedItems.map(it => `<li>${it.qty > 1 ? `${it.qty}× ` : ""}${it.name}</li>`).join("")}
+            ${missedItems.map(it => `<li>${it.qty > 1 ? `${it.qty}× ` : ""}${esc(it.name)}</li>`).join("")}
           </ul>
         </div>
       ` : ""}
@@ -124,7 +127,7 @@ function logItem(name, ok) {
   row.style.cssText = "display:flex;gap:6px;align-items:center;";
   row.innerHTML = `
     <span style="color:${ok ? "#e01a22" : "#888"};font-weight:700;flex-shrink:0;">${ok ? "✓" : "✗"}</span>
-    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}</span>`;
+    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(name)}</span>`;
   el.appendChild(row);
   el.scrollTop = el.scrollHeight;
 }
@@ -341,7 +344,7 @@ async function run() {
       </div>
       <div style="font-weight:700;font-size:12px;color:#1a1917;margin-bottom:6px;">À ajouter manuellement :</div>
       <ul style="margin:0;padding:0 0 0 16px;display:flex;flex-direction:column;gap:3px;font-size:12px;">
-        ${items.map(it => `<li>${it.qty > 1 ? `${it.qty}× ` : ""}${it.name}</li>`).join("")}
+        ${items.map(it => `<li>${it.qty > 1 ? `${it.qty}× ` : ""}${esc(it.name)}</li>`).join("")}
       </ul>
     `;
   } else if (errors === items.length) {
@@ -349,7 +352,7 @@ async function run() {
     doneEl.innerHTML = `
       <div style="font-weight:700;font-size:13px;color:#1a1917;margin-bottom:8px;">Out of stock — add manually:</div>
       <ul style="margin:0;padding:0 0 0 16px;display:flex;flex-direction:column;gap:3px;font-size:12px;">
-        ${items.map(it => `<li>${it.qty > 1 ? `${it.qty}× ` : ""}${it.name}</li>`).join("")}
+        ${items.map(it => `<li>${it.qty > 1 ? `${it.qty}× ` : ""}${esc(it.name)}</li>`).join("")}
       </ul>
     `;
   } else {
@@ -367,7 +370,7 @@ async function run() {
             Out of stock · ${failedItems.length} item${failedItems.length > 1 ? "s" : ""}
           </div>
           <ul style="margin:0;padding:0 0 0 14px;display:flex;flex-direction:column;gap:3px;font-size:12px;color:#555;">
-            ${failedItems.map(it => `<li>${it.qty > 1 ? `${it.qty}× ` : ""}${it.name}</li>`).join("")}
+            ${failedItems.map(it => `<li>${it.qty > 1 ? `${it.qty}× ` : ""}${esc(it.name)}</li>`).join("")}
           </ul>
           <div style="margin-top:7px;font-size:11px;color:#aaa;">The list stays visible on this page ↘</div>
         </div>` : ""}

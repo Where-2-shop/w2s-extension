@@ -1,6 +1,9 @@
 // content/woolworths.js — injecté sur woolworths.com.au
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function esc(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
 
 // ── Overlay ────────────────────────────────────────────────────────────────
 function createOverlay() {
@@ -49,11 +52,11 @@ function logItem(name, ok, substitute = false) {
     row.innerHTML = `
       <span style="color:#007837;font-weight:700;flex-shrink:0;">~</span>
       <span style="font-size:11px;color:#888;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-            title="${name}">${name} <em style="font-style:italic;">(alt.)</em></span>`;
+            title="${esc(name)}">${esc(name)} <em style="font-style:italic;">(alt.)</em></span>`;
   } else {
     row.innerHTML = `
       <span style="color:${ok ? "#007837" : "#e01a22"};font-weight:700;flex-shrink:0;">${ok ? "✓" : "✗"}</span>
-      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}</span>`;
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(name)}</span>`;
   }
   el.appendChild(row);
   el.scrollTop = el.scrollHeight;

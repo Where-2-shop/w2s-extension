@@ -3,6 +3,10 @@
 
 const API = "https://api.where2shop.crea-dapp.com";
 
+function esc(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
 // Replace with your DoorDash affiliate URL once created
 const ALDI_DOORDASH_URL = "YOUR_DOORDASH_AFFILIATE_LINK";
 
@@ -25,11 +29,11 @@ function renderBasket(basket) {
     const row = document.createElement("div");
     row.className = "item-row";
     row.innerHTML = `
-      ${p.image_url ? `<img class="item-img" src="${p.image_url}" alt="" onerror="this.style.display='none'">` : ""}
+      ${p.image_url ? `<img class="item-img" src="${esc(p.image_url)}" alt="" onerror="this.style.display='none'">` : ""}
       <span class="item-qty">${entry.qty}×</span>
-      <span class="item-name" title="${p.name}">${p.name}</span>
+      <span class="item-name" title="${esc(p.name)}">${esc(p.name)}</span>
       ${p.price != null ? `<span class="item-price">$${(p.price * entry.qty).toFixed(2)}</span>` : ""}
-      <span class="store-pill store-${p.store}">${STORE_LABELS[p.store]}</span>
+      <span class="store-pill store-${esc(p.store)}">${esc(STORE_LABELS[p.store] ?? p.store)}</span>
     `;
     list.appendChild(row);
   }
