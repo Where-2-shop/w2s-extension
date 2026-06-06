@@ -1,7 +1,7 @@
 // popup.js — logique du popup Where2Shop
 "use strict";
 
-const API = "https://api.where2shop.crea-dapp.com";
+const API = "https://app.where2shop.crea-dapp.com/api";
 
 function esc(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
