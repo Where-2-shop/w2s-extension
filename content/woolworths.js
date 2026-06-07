@@ -5,6 +5,70 @@ function esc(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
+const MISSED_KEY = "w2s_ww_missed";
+const MISSED_TTL = 7_200_000; // 2h
+
+function showMissedPanel(missedItems) {
+  if (document.getElementById("w2s-missed")) return;
+
+  const panel = document.createElement("div");
+  panel.id = "w2s-missed";
+  panel.style.cssText = `
+    position:fixed;bottom:20px;right:20px;z-index:2147483646;
+    width:264px;border-radius:12px;overflow:hidden;
+    box-shadow:0 8px 32px rgba(0,0,0,.22);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  `;
+
+  function render(collapsed) {
+    panel.innerHTML = `
+      <div id="w2s-missed-hdr" style="
+        background:#007837;padding:10px 12px;
+        display:flex;align-items:center;justify-content:space-between;cursor:pointer;
+      ">
+        <div style="display:flex;align-items:center;gap:7px;">
+          <span style="font-size:13px;font-weight:900;font-family:Arial Black,sans-serif;color:#fff;">
+            W<span style="color:#a8e4c0;">2</span>S
+          </span>
+          <span style="font-size:12px;font-weight:600;color:#fff;">
+            Not added · ${missedItems.length} item${missedItems.length > 1 ? "s" : ""}
+          </span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:10px;color:rgba(255,255,255,.75);">${collapsed ? "▲" : "▼"}</span>
+          <button id="w2s-missed-close" style="
+            background:none;border:none;color:rgba(255,255,255,.75);
+            font-size:15px;cursor:pointer;padding:0 2px;line-height:1;
+          " title="Dismiss">✕</button>
+        </div>
+      </div>
+      ${!collapsed ? `
+        <div style="background:#fff;padding:10px 12px 12px;">
+          <div style="font-size:11px;color:#999;margin-bottom:7px;line-height:1.4;">
+            Not added to your trolley — check these in-store or find alternatives:
+          </div>
+          <ul style="margin:0;padding:0 0 0 14px;display:flex;flex-direction:column;gap:4px;font-size:12px;color:#333;">
+            ${missedItems.map(it => `<li>${it.qty > 1 ? `${it.qty}× ` : ""}${esc(it.name)}</li>`).join("")}
+          </ul>
+        </div>
+      ` : ""}
+    `;
+
+    panel.querySelector("#w2s-missed-hdr").onclick = e => {
+      if (e.target.closest("#w2s-missed-close")) return;
+      render(!collapsed);
+    };
+    panel.querySelector("#w2s-missed-close").onclick = e => {
+      e.stopPropagation();
+      chrome.storage.local.remove(MISSED_KEY);
+      panel.remove();
+    };
+  }
+
+  render(false);
+  document.body.appendChild(panel);
+}
+
 // ── Overlay ────────────────────────────────────────────────────────────────
 function createOverlay() {
   const wrap = document.createElement("div");
@@ -95,9 +159,25 @@ async function addItem(item, xsrf) {
 
 // ── Main ───────────────────────────────────────────────────────────────────
 async function run() {
-  const data = await chrome.storage.local.get("pending_cart");
-  const pending = data.pending_cart;
-  if (!pending || pending.store !== "woolworths") return;
+  const stored = await chrome.storage.local.get(["pending_cart", MISSED_KEY]);
+
+  if (!stored.pending_cart || stored.pending_cart.store !== "woolworths") {
+    const saved = stored[MISSED_KEY];
+    if (saved?.items?.length && Date.now() - saved.ts < MISSED_TTL) {
+      if (!document.body) {
+        await new Promise(res => {
+          const obs = new MutationObserver(() => { if (document.body) { obs.disconnect(); res(); } });
+          obs.observe(document.documentElement, { childList: true });
+        });
+      }
+      showMissedPanel(saved.items);
+    } else if (saved) {
+      chrome.storage.local.remove(MISSED_KEY);
+    }
+    return;
+  }
+
+  const pending = stored.pending_cart;
   if (Date.now() - pending.ts > 600_000) { chrome.storage.local.remove("pending_cart"); return; }
   await chrome.storage.local.remove("pending_cart");
 
@@ -114,6 +194,7 @@ async function run() {
   createOverlay();
   let successes = 0;
   let alternatives = 0;
+  const failedItems = [];
 
   await sleep(1200);
 
@@ -128,10 +209,18 @@ async function run() {
     if (ok) {
       successes++;
       if (item.substituted) alternatives++;
+    } else {
+      failedItems.push(item);
     }
     logItem(item.name, ok, ok && item.substituted);
     setProgress(i + 1, items.length);
     await sleep(300);
+  }
+
+  if (failedItems.length > 0) {
+    await chrome.storage.local.set({ [MISSED_KEY]: { items: failedItems, ts: Date.now() } });
+  } else {
+    await chrome.storage.local.remove(MISSED_KEY);
   }
 
   setStatus("");
@@ -150,7 +239,7 @@ async function run() {
       : "";
     doneEl.style.cssText = "text-align:left;font-size:13px;";
     doneEl.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${failedItems.length ? "10px" : "0"};">
         <span style="font-weight:700;color:#007837;">✓ ${successes} added${altNote}</span>
         <a href="/shop/cart"
            style="font-size:12px;font-weight:700;color:#007837;text-decoration:underline;"
@@ -160,8 +249,19 @@ async function run() {
         <div style="margin-top:7px;font-size:11px;color:#aaa;line-height:1.4;">
           ~ exact product not found at Woolworths — similar item added instead.
         </div>` : ""}
+      ${failedItems.length ? `
+        <div style="border-top:1px solid #f0ede8;padding-top:8px;margin-top:${alternatives > 0 ? "8px" : "0"};">
+          <div style="font-size:11px;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">
+            Not added · ${failedItems.length} item${failedItems.length > 1 ? "s" : ""}
+          </div>
+          <ul style="margin:0;padding:0 0 0 14px;display:flex;flex-direction:column;gap:3px;font-size:12px;color:#555;">
+            ${failedItems.map(it => `<li>${it.qty > 1 ? `${it.qty}× ` : ""}${esc(it.name)}</li>`).join("")}
+          </ul>
+          <div style="margin-top:7px;font-size:11px;color:#aaa;">The list stays visible on this page ↘</div>
+        </div>` : ""}
     `;
     doneEl.style.display = "block";
+    if (failedItems.length) showMissedPanel(failedItems);
   }
 }
 

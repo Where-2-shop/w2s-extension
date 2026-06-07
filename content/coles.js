@@ -188,7 +188,7 @@ async function addItem(item, storeId, trolley) {
   // productId doit être un entier — l'API Coles retourne 200 sans rien ajouter si c'est une string
   const pid = parseInt(item.product_id, 10);
   const body = {
-    ageGateVerified: false,
+    ageGateVerified: true,
     swapBehaviour:   false,
     items: [{ actions: [{ type: "ADD", quantity: item.qty, productId: pid }] }],
   };

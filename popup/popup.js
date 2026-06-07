@@ -16,7 +16,7 @@ const STORE_LABELS = { coles: "Coles", woolworths: "Woolworths", aldi: "Aldi" };
 function show(id)   { document.getElementById(id).classList.remove("hidden"); }
 function hide(id)   { document.getElementById(id).classList.add("hidden"); }
 function showOnly(id) {
-  ["view-loading","view-empty","view-basket","view-comparing","view-result"]
+  ["view-loading","view-empty","view-basket","view-comparing","view-result","view-error"]
     .forEach(v => v === id ? show(v) : hide(v));
 }
 
@@ -227,7 +227,8 @@ async function compare(basket) {
     renderResult(result, basket);
   } catch (err) {
     console.error("[W2S] compare error:", err);
-    showOnly("view-basket"); // retour panier en cas d'erreur
+    showOnly("view-error");
+    document.getElementById("btn-retry").onclick = () => compare(basket);
   }
 }
 

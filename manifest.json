@@ -10,7 +10,6 @@
     "https://app.where2shop.crea-dapp.com/*",
     "http://localhost:3000/*",
     "http://localhost:3001/*",
-    "https://api.where2shop.crea-dapp.com/*",
     "https://www.woolworths.com.au/*",
     "https://www.coles.com.au/*"
   ],
