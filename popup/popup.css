@@ -17,12 +17,13 @@ body {
   background: #1a1917;
   color: #fff;
 }
-.logo {
-  font-size: 18px;
-  font-weight: 900;
-  letter-spacing: -0.5px;
+.logo-img {
+  height: 32px;
+  width: auto;
+  border-radius: 6px;
+  background: #fff;
+  padding: 2px;
 }
-.red { color: #e01a22; }
 .header-title {
   font-size: 13px;
   font-weight: 600;
