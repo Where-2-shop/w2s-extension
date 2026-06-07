@@ -337,12 +337,12 @@ async function run() {
   if (incapsulaBlocked) {
     doneEl.style.cssText = "color:#888;text-align:left;font-size:12px;font-weight:400;";
     doneEl.innerHTML = `
-      <div style="font-weight:700;font-size:13px;color:#e01a22;margin-bottom:6px;">⚠ Accès bloqué par Coles</div>
+      <div style="font-weight:700;font-size:13px;color:#e01a22;margin-bottom:6px;">⚠ Blocked by Coles</div>
       <div style="font-size:11px;color:#555;margin-bottom:10px;line-height:1.5;">
-        Ouvrez <strong>coles.com.au</strong> dans un onglet normal,<br>
-        puis revenez dans l'extension et cliquez <strong>Shop →</strong> à nouveau.
+        Open <strong>coles.com.au</strong> in a normal tab,<br>
+        then come back to the extension and click <strong>Shop →</strong> again.
       </div>
-      <div style="font-weight:700;font-size:12px;color:#1a1917;margin-bottom:6px;">À ajouter manuellement :</div>
+      <div style="font-weight:700;font-size:12px;color:#1a1917;margin-bottom:6px;">Add manually:</div>
       <ul style="margin:0;padding:0 0 0 16px;display:flex;flex-direction:column;gap:3px;font-size:12px;">
         ${items.map(it => `<li>${it.qty > 1 ? `${it.qty}× ` : ""}${esc(it.name)}</li>`).join("")}
       </ul>
