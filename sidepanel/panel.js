@@ -1,0 +1,357 @@
+// popup.js — logique du popup Where2Shop
+"use strict";
+
+const API = "https://app.where2shop.crea-dapp.com/api";
+
+function esc(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// Replace with your DoorDash affiliate URL once created
+const ALDI_DOORDASH_URL = "YOUR_DOORDASH_AFFILIATE_LINK";
+
+const STORE_LABELS = { coles: "Coles", woolworths: "Woolworths", aldi: "Aldi" };
+
+// Module-level basket so event handlers always reference the live state
+let currentBasket = [];
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function show(id)   { document.getElementById(id).classList.remove("hidden"); }
+function hide(id)   { document.getElementById(id).classList.add("hidden"); }
+function showOnly(id) {
+  ["view-loading","view-empty","view-basket","view-comparing","view-result","view-error"]
+    .forEach(v => v === id ? show(v) : hide(v));
+}
+
+// ── Persist + re-render basket ────────────────────────────────────────────────
+function saveAndRender() {
+  chrome.storage.local.set({ w2s_basket: currentBasket });
+  if (currentBasket.length === 0) {
+    showOnly("view-empty");
+    return;
+  }
+  renderBasket(currentBasket);
+  showOnly("view-basket");
+}
+
+// ── Render basket ─────────────────────────────────────────────────────────────
+function renderBasket(basket) {
+  const list = document.getElementById("items-list");
+  list.innerHTML = "";
+
+  for (let i = 0; i < basket.length; i++) {
+    const entry = basket[i];
+    const p = entry.product;
+    const row = document.createElement("div");
+    row.className = "item-row";
+
+    // Product image
+    if (p.image_url) {
+      const img = document.createElement("img");
+      img.className = "item-img";
+      img.src = p.image_url;
+      img.alt = "";
+      img.onerror = () => { img.style.display = "none"; };
+      row.appendChild(img);
+    }
+
+    // Qty controls: [−] qty [+]
+    const qtyWrap = document.createElement("div");
+    qtyWrap.className = "qty-controls";
+
+    const btnMinus = document.createElement("button");
+    btnMinus.className = "qty-btn";
+    btnMinus.textContent = "−";
+    btnMinus.title = "Decrease";
+    btnMinus.onclick = () => {
+      if (currentBasket[i].qty > 1) {
+        currentBasket[i] = { ...currentBasket[i], qty: currentBasket[i].qty - 1 };
+      } else {
+        currentBasket.splice(i, 1);
+      }
+      saveAndRender();
+    };
+
+    const qtyVal = document.createElement("span");
+    qtyVal.className = "qty-val";
+    qtyVal.textContent = entry.qty;
+
+    const btnPlus = document.createElement("button");
+    btnPlus.className = "qty-btn";
+    btnPlus.textContent = "+";
+    btnPlus.title = "Increase";
+    btnPlus.onclick = () => {
+      currentBasket[i] = { ...currentBasket[i], qty: currentBasket[i].qty + 1 };
+      saveAndRender();
+    };
+
+    qtyWrap.appendChild(btnMinus);
+    qtyWrap.appendChild(qtyVal);
+    qtyWrap.appendChild(btnPlus);
+    row.appendChild(qtyWrap);
+
+    // Product name
+    const nameEl = document.createElement("span");
+    nameEl.className = "item-name";
+    nameEl.title = p.name;
+    nameEl.textContent = p.name;
+    row.appendChild(nameEl);
+
+    // Line price (qty × unit price)
+    if (p.price != null) {
+      const priceEl = document.createElement("span");
+      priceEl.className = "item-price";
+      priceEl.textContent = `$${(p.price * entry.qty).toFixed(2)}`;
+      row.appendChild(priceEl);
+    }
+
+    // Store pill
+    const pillEl = document.createElement("span");
+    pillEl.className = `store-pill store-${p.store}`;
+    pillEl.textContent = STORE_LABELS[p.store] ?? p.store;
+    row.appendChild(pillEl);
+
+    // Delete button
+    const delBtn = document.createElement("button");
+    delBtn.className = "btn-remove";
+    delBtn.title = "Remove item";
+    delBtn.textContent = "✕";
+    delBtn.onclick = () => {
+      currentBasket.splice(i, 1);
+      saveAndRender();
+    };
+    row.appendChild(delBtn);
+
+    list.appendChild(row);
+  }
+}
+
+// ── Share / Download helpers ──────────────────────────────────────────────────
+function encodeBasketForShare(entries) {
+  const KEY = { coles: "c", woolworths: "w", aldi: "a" };
+  const compressed = entries.map(e => {
+    const c = { s: KEY[e.product.store], i: e.product.product_id, q: e.qty, n: e.product.name };
+    if (e.product.brand)          c.b = e.product.brand;
+    if (e.product.price != null)  c.p = e.product.price;
+    return c;
+  });
+  return btoa(unescape(encodeURIComponent(JSON.stringify(compressed))))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+}
+
+function downloadList(storeItems, storeName, total) {
+  const date = new Date().toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
+  const lines = [
+    `${storeName} Shopping List — ${storeItems.length} item${storeItems.length !== 1 ? "s" : ""} — $${total.toFixed(2)}`,
+    `Generated by Where2Shop · ${date}`,
+    "",
+    ...storeItems.map(it => {
+      const qty  = it.qty > 1 ? `${it.qty}× ` : "";
+      const price = it.price != null ? ` — $${(it.price * it.qty).toFixed(2)}` : "";
+      return `□ ${qty}${it.name}${price}`;
+    }),
+  ];
+  const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url;
+  a.download = `${storeName.toLowerCase()}-shopping-list.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ── Render result ─────────────────────────────────────────────────────────────
+function renderResult(result, basket) {
+  const { totals, items } = result;
+  const winner = totals.cheaper;
+
+  // Winner card
+  const card = document.getElementById("winner-card");
+  card.className = `winner-card ${winner ?? "tie"}`;
+  if (winner) {
+    card.innerHTML = `
+      <div class="winner-label">Best price</div>
+      <div class="winner-name ${winner}">${STORE_LABELS[winner]}</div>
+      ${totals.savings > 0
+        ? `<div class="winner-savings">Save <strong>$${totals.savings.toFixed(2)}</strong> vs next cheapest</div>`
+        : ""}
+      ${totals.winner_total > 0 && totals.winner_extra > 0
+        ? `<div class="winner-savings" style="margin-top:3px;">Full shop: <strong>$${totals.winner_total.toFixed(2)}</strong></div>`
+        : ""}
+    `;
+  } else {
+    card.innerHTML = `<div class="winner-label">No clear winner</div>
+      <div class="winner-name">Tie</div>`;
+  }
+
+  // Store totals with per-store Shop buttons
+  const totalsEl = document.getElementById("store-totals");
+  totalsEl.innerHTML = "";
+
+  const STORE_COLORS = { coles: "#e01a22", woolworths: "#007837", aldi: "#1a3a6b" };
+
+  function buildStoreItems(s) {
+    return items
+      .map(line => {
+        const d = line[s];
+        if (!d?.product) return null;
+        return {
+          product_id: d.product.product_id,
+          name: d.product.name,
+          qty: line.qty,
+          price: d.product.price,
+          substituted: d.substituted ?? false,
+        };
+      })
+      .filter(Boolean);
+  }
+
+  for (const s of ["coles", "woolworths", "aldi"]) {
+    if (!totals[s]) continue;
+    const isWinner = s === winner;
+
+    const row = document.createElement("div");
+    row.className = `total-row ${isWinner ? "winner " + s : ""}`;
+
+    const info = document.createElement("div");
+    info.className = "total-info";
+    info.innerHTML = `
+      <span class="total-store">${STORE_LABELS[s]}${isWinner ? " ✓" : ""}</span>
+      <span class="total-amount ${s}">$${totals[s].toFixed(2)}</span>
+    `;
+
+    const actionBtn = document.createElement("button");
+    actionBtn.className = "btn-shop-inline";
+    actionBtn.style.background = STORE_COLORS[s];
+
+    if (s === "woolworths") {
+      actionBtn.textContent = "Shop →";
+      actionBtn.onclick = () => {
+        chrome.runtime.sendMessage(
+          { type: "OPEN_STORE", store: "woolworths", items: buildStoreItems("woolworths") }
+        );
+      };
+    } else if (s === "coles") {
+      actionBtn.textContent = "Shop →";
+      actionBtn.onclick = async () => {
+        await chrome.storage.local.set({
+          pending_cart: { store: "coles", items: buildStoreItems("coles"), ts: Date.now() },
+        });
+        chrome.tabs.create({ url: "https://www.coles.com.au/browse/fruit-vegetables" });
+      };
+    } else {
+      // Aldi: downloadable list + DoorDash affiliate link
+      actionBtn.textContent = "↓ List";
+      actionBtn.onclick = () => downloadList(buildStoreItems("aldi"), "Aldi", totals.aldi);
+
+      const doorDashBtn = document.createElement("a");
+      doorDashBtn.href = ALDI_DOORDASH_URL;
+      doorDashBtn.target = "_blank";
+      doorDashBtn.rel = "noopener noreferrer";
+      doorDashBtn.className = "btn-shop-inline";
+      doorDashBtn.style.cssText = `background:#ff3008;text-decoration:none;display:flex;align-items:center;justify-content:center;`;
+      doorDashBtn.textContent = "DoorDash →";
+
+      const btnGroup = document.createElement("div");
+      btnGroup.style.cssText = "display:flex;gap:4px;flex-shrink:0;";
+      btnGroup.appendChild(actionBtn);
+      btnGroup.appendChild(doorDashBtn);
+
+      row.appendChild(info);
+      row.appendChild(btnGroup);
+      totalsEl.appendChild(row);
+      continue;
+    }
+
+    row.appendChild(info);
+    row.appendChild(actionBtn);
+    totalsEl.appendChild(row);
+  }
+
+  // Share basket link button
+  const shareBtn = document.getElementById("btn-share-basket");
+  if (shareBtn) {
+    shareBtn.onclick = async () => {
+      const encoded = encodeBasketForShare(basket);
+      const url = `https://app.where2shop.crea-dapp.com/?basket=${encoded}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        shareBtn.textContent = "Link copied ✓";
+        setTimeout(() => { shareBtn.textContent = "Share basket 🔗"; }, 2000);
+      } catch {
+        shareBtn.textContent = "Error";
+      }
+    };
+  }
+
+  showOnly("view-result");
+}
+
+// ── Compare ───────────────────────────────────────────────────────────────────
+async function compare(basket) {
+  showOnly("view-comparing");
+  try {
+    const res = await fetch(`${API}/basket/compare`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: basket.map(e => ({
+          product_id: e.product.product_id,
+          store:      e.product.store,
+          qty:        e.qty,
+        })),
+      }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const result = await res.json();
+    renderResult(result, basket);
+  } catch (err) {
+    console.error("[W2S] compare error:", err);
+    showOnly("view-error");
+    document.getElementById("btn-retry").onclick = () => compare(currentBasket);
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init() {
+  showOnly("view-loading");
+
+  // Wire static buttons once
+  document.getElementById("btn-close").onclick = () => window.close();
+  document.getElementById("btn-open-w2s").onclick = () => {
+    chrome.tabs.create({ url: "https://app.where2shop.crea-dapp.com" });
+  };
+  document.getElementById("btn-compare").onclick = () => compare(currentBasket);
+  document.getElementById("btn-back").onclick    = () => {
+    renderBasket(currentBasket);
+    showOnly("view-basket");
+  };
+
+  const data = await chrome.storage.local.get("w2s_basket");
+  currentBasket = data.w2s_basket ?? [];
+
+  if (!currentBasket.length) {
+    showOnly("view-empty");
+    return;
+  }
+
+  renderBasket(currentBasket);
+  showOnly("view-basket");
+}
+
+init();
+
+// Refresh basket automatically when storage changes (items added from the app)
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.w2s_basket) {
+    currentBasket = changes.w2s_basket.newValue ?? [];
+    if (currentBasket.length === 0) {
+      showOnly("view-empty");
+    } else {
+      renderBasket(currentBasket);
+      showOnly("view-basket");
+    }
+  }
+});

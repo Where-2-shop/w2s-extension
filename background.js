@@ -1,6 +1,8 @@
 // background.js — service worker
 // Reçoit l'ordre d'ouvrir le store et stocke les items à ajouter au panier
 
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(console.error);
+
 // Woolworths uniquement : Coles est bloqué par Incapsula (tab programmatique),
 // Aldi n'a pas de commande en ligne — les deux passent par "Get List" dans le popup.
 const STORE_URLS = {

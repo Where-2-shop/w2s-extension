@@ -1,0 +1,237 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  width: 100%;
+  height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13px;
+  background: #f5f3ef;
+  color: #1a1917;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Header ─────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #1a1917;
+  color: #fff;
+  flex-shrink: 0;
+}
+.logo-img {
+  height: 32px;
+  width: auto;
+  border-radius: 6px;
+  background: #fff;
+  padding: 2px;
+}
+.header-title {
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.85;
+  flex: 1;
+}
+.btn-close {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.5);
+  font-size: 15px;
+  cursor: pointer;
+  padding: 4px 7px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color .15s, background .15s;
+  flex-shrink: 0;
+}
+.btn-close:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.12);
+}
+
+/* ── Views ──────────────────────────────────────────────── */
+.view {
+  padding: 16px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.hidden { display: none !important; }
+
+/* ── Center state ───────────────────────────────────────── */
+.center {
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+}
+.empty-icon { font-size: 32px; }
+.empty-title { font-size: 15px; font-weight: 600; }
+.empty-sub { font-size: 12px; color: #888; line-height: 1.5; }
+
+/* ── Spinner ────────────────────────────────────────────── */
+.spinner {
+  width: 24px; height: 24px;
+  border: 2.5px solid #e5e2dd;
+  border-top-color: #1a1917;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.comparing-label { font-size: 12px; color: #888; margin-top: 8px; }
+.error-icon  { font-size: 28px; }
+.error-title { font-size: 15px; font-weight: 600; }
+
+/* ── Items list ─────────────────────────────────────────── */
+.items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+.item-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid #ede9e3;
+  flex-shrink: 0;
+}
+.item-img {
+  width: 38px; height: 38px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: #f5f3ef;
+  flex-shrink: 0;
+}
+.qty-controls { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.qty-btn {
+  width: 18px; height: 18px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #f5f3ef;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #555;
+  padding: 0;
+  transition: background .1s;
+}
+.qty-btn:hover  { background: #ede9e3; }
+.qty-btn:active { background: #ddd; }
+.qty-val {
+  font-size: 11px;
+  font-weight: 700;
+  color: #888;
+  min-width: 16px;
+  text-align: center;
+}
+.btn-remove {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #ccc;
+  font-size: 12px;
+  padding: 2px 3px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color .15s;
+}
+.btn-remove:hover { color: #e01a22; }
+.item-name {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.item-price { font-size: 12px; font-weight: 600; color: #1a1917; white-space: nowrap; }
+.store-pill { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 999px; }
+.store-coles      { background: #fce9ea; color: #e01a22; }
+.store-woolworths { background: #e6f4ed; color: #007837; }
+.store-aldi       { background: #e8edf7; color: #1a3a6b; }
+
+/* ── Winner card ────────────────────────────────────────── */
+.winner-card {
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+.winner-card.coles      { background: #fce9ea; }
+.winner-card.woolworths { background: #e6f4ed; }
+.winner-card.aldi       { background: #e8edf7; }
+.winner-card.tie        { background: #f0ede8; }
+.winner-label { font-size: 11px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: .04em; }
+.winner-name  { font-size: 22px; font-weight: 800; margin: 2px 0 4px; }
+.winner-name.coles       { color: #e01a22; }
+.winner-name.woolworths  { color: #007837; }
+.winner-name.aldi        { color: #1a3a6b; }
+.winner-savings { font-size: 13px; color: #555; }
+
+/* ── Store totals ───────────────────────────────────────── */
+.store-totals { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; flex-shrink: 0; }
+.total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px 6px 10px;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #ede9e3;
+  gap: 8px;
+}
+.total-info { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.btn-shop-inline {
+  flex-shrink: 0;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  opacity: 0.9;
+  transition: opacity .15s;
+  white-space: nowrap;
+}
+.btn-shop-inline:hover  { opacity: 1; }
+.btn-shop-inline:active { opacity: 0.75; }
+.total-row.winner             { border-width: 2px; }
+.total-row.winner.coles       { border-color: #e01a22; }
+.total-row.winner.woolworths  { border-color: #007837; }
+.total-row.winner.aldi        { border-color: #1a3a6b; }
+.total-store  { font-size: 12px; font-weight: 600; }
+.total-amount { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.total-amount.coles      { color: #e01a22; }
+.total-amount.woolworths { color: #007837; }
+.total-amount.aldi       { color: #1a3a6b; }
+
+/* ── Buttons ────────────────────────────────────────────── */
+.actions { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+.actions-row { display: flex; gap: 6px; }
+.btn {
+  width: 100%; padding: 11px; border: none; border-radius: 10px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: opacity .15s;
+}
+.btn:hover  { opacity: .88; }
+.btn:active { opacity: .7; }
+.btn-primary { background: #1a1917; color: #fff; }
+.btn-ghost   { background: transparent; color: #888; border: 1px solid #ddd; }
+.btn-share { flex: 1; font-size: 12px; padding: 9px 8px; }
+.btn-back  { flex: 1; font-size: 12px; padding: 9px 8px; }
