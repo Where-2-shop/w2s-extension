@@ -1,7 +1,7 @@
 // popup.js — logique du popup Where2Shop
 "use strict";
 
-const API = "https://app.where2shop.crea-dapp.com/api";
+const API = "https://where2shop.com.au/api";
 
 function esc(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
@@ -275,7 +275,7 @@ function renderResult(result, basket) {
   if (shareBtn) {
     shareBtn.onclick = async () => {
       const encoded = encodeBasketForShare(basket);
-      const url = `https://app.where2shop.crea-dapp.com/?basket=${encoded}`;
+      const url = `https://where2shop.com.au/?basket=${encoded}`;
       try {
         await navigator.clipboard.writeText(url);
         shareBtn.textContent = "Link copied ✓";
@@ -321,7 +321,7 @@ async function init() {
   // Wire static buttons once
   document.getElementById("btn-close").onclick = () => window.close();
   document.getElementById("btn-open-w2s").onclick = () => {
-    chrome.tabs.create({ url: "https://app.where2shop.crea-dapp.com" });
+    chrome.tabs.create({ url: "https://where2shop.com.au" });
   };
   document.getElementById("btn-compare").onclick = () => compare(currentBasket);
   document.getElementById("btn-back").onclick    = () => {

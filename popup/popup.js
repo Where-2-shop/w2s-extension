@@ -1,7 +1,7 @@
 // popup.js — logique du popup Where2Shop
 "use strict";
 
-const API = "https://app.where2shop.crea-dapp.com/api";
+const API = "https://where2shop.com.au/api";
 
 function esc(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
@@ -12,6 +12,9 @@ const ALDI_DOORDASH_URL = "YOUR_DOORDASH_AFFILIATE_LINK";
 
 const STORE_LABELS = { coles: "Coles", woolworths: "Woolworths", aldi: "Aldi" };
 
+// Module-level basket so event handlers always reference the live state
+let currentBasket = [];
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function show(id)   { document.getElementById(id).classList.remove("hidden"); }
 function hide(id)   { document.getElementById(id).classList.add("hidden"); }
@@ -20,21 +23,105 @@ function showOnly(id) {
     .forEach(v => v === id ? show(v) : hide(v));
 }
 
+// ── Persist + re-render basket ────────────────────────────────────────────────
+function saveAndRender() {
+  chrome.storage.local.set({ w2s_basket: currentBasket });
+  if (currentBasket.length === 0) {
+    showOnly("view-empty");
+    return;
+  }
+  renderBasket(currentBasket);
+  showOnly("view-basket");
+}
+
 // ── Render basket ─────────────────────────────────────────────────────────────
 function renderBasket(basket) {
   const list = document.getElementById("items-list");
   list.innerHTML = "";
-  for (const entry of basket) {
+
+  for (let i = 0; i < basket.length; i++) {
+    const entry = basket[i];
     const p = entry.product;
     const row = document.createElement("div");
     row.className = "item-row";
-    row.innerHTML = `
-      ${p.image_url ? `<img class="item-img" src="${esc(p.image_url)}" alt="" onerror="this.style.display='none'">` : ""}
-      <span class="item-qty">${entry.qty}×</span>
-      <span class="item-name" title="${esc(p.name)}">${esc(p.name)}</span>
-      ${p.price != null ? `<span class="item-price">$${(p.price * entry.qty).toFixed(2)}</span>` : ""}
-      <span class="store-pill store-${esc(p.store)}">${esc(STORE_LABELS[p.store] ?? p.store)}</span>
-    `;
+
+    // Product image
+    if (p.image_url) {
+      const img = document.createElement("img");
+      img.className = "item-img";
+      img.src = p.image_url;
+      img.alt = "";
+      img.onerror = () => { img.style.display = "none"; };
+      row.appendChild(img);
+    }
+
+    // Qty controls: [−] qty [+]
+    const qtyWrap = document.createElement("div");
+    qtyWrap.className = "qty-controls";
+
+    const btnMinus = document.createElement("button");
+    btnMinus.className = "qty-btn";
+    btnMinus.textContent = "−";
+    btnMinus.title = "Decrease";
+    btnMinus.onclick = () => {
+      if (currentBasket[i].qty > 1) {
+        currentBasket[i] = { ...currentBasket[i], qty: currentBasket[i].qty - 1 };
+      } else {
+        currentBasket.splice(i, 1);
+      }
+      saveAndRender();
+    };
+
+    const qtyVal = document.createElement("span");
+    qtyVal.className = "qty-val";
+    qtyVal.textContent = entry.qty;
+
+    const btnPlus = document.createElement("button");
+    btnPlus.className = "qty-btn";
+    btnPlus.textContent = "+";
+    btnPlus.title = "Increase";
+    btnPlus.onclick = () => {
+      currentBasket[i] = { ...currentBasket[i], qty: currentBasket[i].qty + 1 };
+      saveAndRender();
+    };
+
+    qtyWrap.appendChild(btnMinus);
+    qtyWrap.appendChild(qtyVal);
+    qtyWrap.appendChild(btnPlus);
+    row.appendChild(qtyWrap);
+
+    // Product name
+    const nameEl = document.createElement("span");
+    nameEl.className = "item-name";
+    nameEl.title = p.name;
+    nameEl.textContent = p.name;
+    row.appendChild(nameEl);
+
+    // Line price (qty × unit price)
+    if (p.price != null) {
+      const priceEl = document.createElement("span");
+      priceEl.className = "item-price";
+      priceEl.textContent = `$${(p.price * entry.qty).toFixed(2)}`;
+      row.appendChild(priceEl);
+    }
+
+    // Store pill
+    const pillEl = document.createElement("span");
+    pillEl.className = `store-pill store-${p.store}`;
+    pillEl.textContent = STORE_LABELS[p.store] ?? p.store;
+    row.appendChild(pillEl);
+
+    // Delete button
+    const delBtn = document.createElement("button");
+    delBtn.className = "btn-remove";
+    delBtn.title = "Remove item";
+    delBtn.textContent = "✕";
+    delBtn.onclick = () => {
+      currentBasket.splice(i, 1);
+      saveAndRender();
+    };
+    row.appendChild(delBtn);
+
     list.appendChild(row);
   }
 }
@@ -140,7 +227,6 @@ function renderResult(result, basket) {
     actionBtn.style.background = STORE_COLORS[s];
 
     if (s === "woolworths") {
-      // Woolworths : auto-add via API → ouvre via background.js (service worker)
       actionBtn.textContent = "Shop →";
       actionBtn.onclick = () => {
         chrome.runtime.sendMessage(
@@ -149,8 +235,6 @@ function renderResult(result, basket) {
         );
       };
     } else if (s === "coles") {
-      // Coles : ouvre depuis le popup (pas le service worker) pour éviter la CSP
-      // héritée du SW qui bloque la challenge page Incapsula.
       actionBtn.textContent = "Shop →";
       actionBtn.onclick = async () => {
         await chrome.storage.local.set({
@@ -160,7 +244,7 @@ function renderResult(result, basket) {
         window.close();
       };
     } else {
-      // Aldi : liste téléchargeable + lien DoorDash affilié
+      // Aldi: downloadable list + DoorDash affiliate link
       actionBtn.textContent = "↓ List";
       actionBtn.onclick = () => downloadList(buildStoreItems("aldi"), "Aldi", totals.aldi);
 
@@ -193,7 +277,7 @@ function renderResult(result, basket) {
   if (shareBtn) {
     shareBtn.onclick = async () => {
       const encoded = encodeBasketForShare(basket);
-      const url = `https://app.where2shop.crea-dapp.com/?basket=${encoded}`;
+      const url = `https://where2shop.com.au/?basket=${encoded}`;
       try {
         await navigator.clipboard.writeText(url);
         shareBtn.textContent = "Link copied ✓";
@@ -228,7 +312,7 @@ async function compare(basket) {
   } catch (err) {
     console.error("[W2S] compare error:", err);
     showOnly("view-error");
-    document.getElementById("btn-retry").onclick = () => compare(basket);
+    document.getElementById("btn-retry").onclick = () => compare(currentBasket);
   }
 }
 
@@ -236,26 +320,27 @@ async function compare(basket) {
 async function init() {
   showOnly("view-loading");
 
-  // Lire le panier depuis chrome.storage (synchronisé par le content script)
-  const data = await chrome.storage.local.get("w2s_basket");
-  const basket = data.w2s_basket ?? [];
+  // Wire static buttons once
+  document.getElementById("btn-open-w2s").onclick = () => {
+    chrome.tabs.create({ url: "https://where2shop.com.au" });
+    window.close();
+  };
+  document.getElementById("btn-compare").onclick = () => compare(currentBasket);
+  document.getElementById("btn-back").onclick    = () => {
+    renderBasket(currentBasket);
+    showOnly("view-basket");
+  };
 
-  if (!basket.length) {
+  const data = await chrome.storage.local.get("w2s_basket");
+  currentBasket = data.w2s_basket ?? [];
+
+  if (!currentBasket.length) {
     showOnly("view-empty");
-    document.getElementById("btn-open-w2s").onclick = () => {
-      chrome.tabs.create({ url: "https://app.where2shop.crea-dapp.com" });
-      window.close();
-    };
     return;
   }
 
-  renderBasket(basket);
+  renderBasket(currentBasket);
   showOnly("view-basket");
-
-  document.getElementById("btn-compare").onclick = () => compare(basket);
-  document.getElementById("btn-back").onclick = () => {
-    showOnly("view-basket");
-  };
 }
 
 init();
