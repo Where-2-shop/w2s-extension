@@ -24,6 +24,7 @@ jobs:
             background.js \
             content/ \
             popup/ \
+            sidepanel/ \
             icons/
 
       - name: Upload artifact
