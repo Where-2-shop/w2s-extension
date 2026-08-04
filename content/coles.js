@@ -266,7 +266,22 @@ async function run() {
   await chrome.storage.local.remove("pending_cart");
 
   const items = pending.items;
-  if (!items?.length) return;
+  // Nothing to add doesn't mean nothing to say: if Coles stocks none of the
+  // basket, that whole list still has to reach the shopper.
+  if (!items?.length) {
+    const onlyMissing = pending.missingItems ?? [];
+    if (onlyMissing.length) {
+      await chrome.storage.local.set({ [MISSED_KEY]: { items: onlyMissing, ts: Date.now() } });
+      if (!document.body) {
+        await new Promise(res => {
+          const obs = new MutationObserver(() => { if (document.body) { obs.disconnect(); res(); } });
+          obs.observe(document.documentElement, { childList: true });
+        });
+      }
+      showMissedPanel(onlyMissing);
+    }
+    return;
+  }
 
   if (!document.body) {
     await new Promise(res => {
@@ -322,13 +337,23 @@ async function run() {
   }
 
   // Sauvegarder les items non ajoutés — le panel réapparaîtra sur les pages suivantes
-  if (failedItems.length > 0) {
-    await chrome.storage.local.set({ [MISSED_KEY]: { items: failedItems, ts: Date.now() } });
+  // Two different ways an item ends up out of the cart: the add call failed, or
+  // Coles doesn't stock it at all (filtered out before we got here, so it
+  // arrives separately). Either way the shopper has to buy it by hand.
+  const notAdded = [...failedItems, ...(pending.missingItems ?? [])];
+
+  if (notAdded.length > 0) {
+    await chrome.storage.local.set({ [MISSED_KEY]: { items: notAdded, ts: Date.now() } });
   } else {
     await chrome.storage.local.remove(MISSED_KEY);
   }
 
   setStatus("");
+  // Shown before touching the overlay, and regardless of which summary branch
+  // runs below: the store SPA re-renders <body> and can destroy the overlay
+  // mid-fill, and this list must survive that.
+  if (notAdded.length) showMissedPanel(notAdded);
+
   const doneEl = document.getElementById("w2s-done");
   if (!doneEl) return;
 
@@ -358,26 +383,24 @@ async function run() {
   } else {
     doneEl.style.cssText = "text-align:left;font-size:13px;";
     doneEl.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${failedItems.length ? "10px" : "0"};">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${notAdded.length ? "10px" : "0"};">
         <span style="font-weight:700;color:#e01a22;">✓ ${successes} item${successes > 1 ? "s" : ""} added</span>
         <a href="/checkout/cart"
            style="font-size:12px;font-weight:700;color:#e01a22;text-decoration:underline;"
            onclick="document.getElementById('w2s-overlay').remove()">View Cart →</a>
       </div>
-      ${failedItems.length ? `
+      ${notAdded.length ? `
         <div style="border-top:1px solid #f0ede8;padding-top:8px;">
           <div style="font-size:11px;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">
-            Out of stock · ${failedItems.length} item${failedItems.length > 1 ? "s" : ""}
+            Not added · ${notAdded.length} item${notAdded.length > 1 ? "s" : ""}
           </div>
           <ul style="margin:0;padding:0 0 0 14px;display:flex;flex-direction:column;gap:3px;font-size:12px;color:#555;">
-            ${failedItems.map(it => `<li>${it.qty > 1 ? `${it.qty}× ` : ""}${esc(it.name)}</li>`).join("")}
+            ${notAdded.map(it => `<li>${it.qty > 1 ? `${it.qty}× ` : ""}${esc(it.name)}</li>`).join("")}
           </ul>
           <div style="margin-top:7px;font-size:11px;color:#aaa;">The list stays visible on this page ↘</div>
         </div>` : ""}
     `;
 
-    // Afficher le panel sticky maintenant (sera aussi visible sur les pages suivantes)
-    if (failedItems.length) showMissedPanel(failedItems);
   }
   doneEl.style.display = "block";
 }

@@ -11,10 +11,12 @@ const STORE_URLS = {
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === "OPEN_STORE") {
-    const { store, items } = msg;
+    const { store, items, missingItems } = msg;
     const url = STORE_URLS[store];
     if (!url) { sendResponse({ ok: false, reason: "no_url" }); return true; }
-    chrome.storage.local.set({ pending_cart: { store, items, ts: Date.now() } }, () => {
+    chrome.storage.local.set({
+      pending_cart: { store, items, missingItems: missingItems ?? [], ts: Date.now() },
+    }, () => {
       chrome.tabs.create({ url });
     });
     sendResponse({ ok: true });

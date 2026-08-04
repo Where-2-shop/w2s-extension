@@ -208,6 +208,16 @@ function renderResult(result, basket) {
       .filter(Boolean);
   }
 
+  // Items this store doesn't carry at all. buildStoreItems() drops them (there
+  // is nothing to add to the cart), so without passing them separately they
+  // would vanish silently — the shopper would never learn they still need to
+  // buy them. Merged into the "not added" panel on the store page.
+  function buildMissingItems(s) {
+    return items
+      .filter(line => !line[s]?.product)
+      .map(line => ({ name: line.source.name, qty: line.qty }));
+  }
+
   for (const s of ["coles", "woolworths", "aldi"]) {
     if (!totals[s]) continue;
     const isWinner = s === winner;
@@ -230,14 +240,21 @@ function renderResult(result, basket) {
       actionBtn.textContent = "Shop →";
       actionBtn.onclick = () => {
         chrome.runtime.sendMessage(
-          { type: "OPEN_STORE", store: "woolworths", items: buildStoreItems("woolworths") }
+          { type: "OPEN_STORE", store: "woolworths",
+            items: buildStoreItems("woolworths"),
+            missingItems: buildMissingItems("woolworths") }
         );
       };
     } else if (s === "coles") {
       actionBtn.textContent = "Shop →";
       actionBtn.onclick = async () => {
         await chrome.storage.local.set({
-          pending_cart: { store: "coles", items: buildStoreItems("coles"), ts: Date.now() },
+          pending_cart: {
+            store: "coles",
+            items: buildStoreItems("coles"),
+            missingItems: buildMissingItems("coles"),
+            ts: Date.now(),
+          },
         });
         chrome.tabs.create({ url: "https://www.coles.com.au/browse/fruit-vegetables" });
       };
