@@ -13,6 +13,17 @@ function syncBasket() {
   }
 }
 
+// Write-back: si le popup modifie w2s_basket, on met à jour localStorage
+// pour que l'app reste en sync (évite que le prochain poll écrase les edits popup)
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || !changes.w2s_basket) return;
+  try {
+    localStorage.setItem(BASKET_KEY, JSON.stringify(changes.w2s_basket.newValue ?? []));
+  } catch (e) {
+    // silently ignore
+  }
+});
+
 // Sync immédiat + polling
 syncBasket();
 setInterval(syncBasket, 2000);

@@ -87,12 +87,51 @@ body {
   background: #f5f3ef;
   flex-shrink: 0;
 }
-.item-qty {
+.qty-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.qty-btn {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #f5f3ef;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #555;
+  padding: 0;
+  transition: background .1s;
+}
+.qty-btn:hover  { background: #ede9e3; }
+.qty-btn:active { background: #ddd; }
+.qty-val {
   font-size: 11px;
   font-weight: 700;
   color: #888;
-  min-width: 20px;
+  min-width: 16px;
+  text-align: center;
 }
+.btn-remove {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #ccc;
+  font-size: 12px;
+  padding: 2px 3px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color .15s;
+}
+.btn-remove:hover { color: #e01a22; }
 .item-name {
   flex: 1;
   font-size: 12px;
