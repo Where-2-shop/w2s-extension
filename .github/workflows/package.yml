@@ -3,6 +3,11 @@ name: Package Extension
 on:
   push:
     branches: [main]
+  # Déclenchement manuel : le 2026-08-06, un push sur main n'a créé aucun run
+  # (repo public, Actions activé, workflow actif) et la release a dû être
+  # construite et publiée à la main. Permet de relancer le packaging sans
+  # avoir à produire un commit vide.
+  workflow_dispatch:
 
 jobs:
   zip:
