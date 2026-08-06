@@ -13,7 +13,7 @@
 import { chromium } from "playwright";
 import { readFileSync } from "node:fs";
 
-const EXT = "/Users/romainlirio/Documents/where-2-shop/extension";
+const EXT = "/Users/romainlirio/where-2-shop/extension";
 const wwSrc = readFileSync(`${EXT}/content/woolworths.js`, "utf8");
 const colesSrc = readFileSync(`${EXT}/content/coles.js`, "utf8");
 
