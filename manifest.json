@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Where2Shop",
+  "name": "Where2Shop Australia",
   "short_name": "W2S",
   "version": "1.1.6",
-  "description": "Compare Coles, Woolworths & Aldi — auto-fill your cart at the cheapest store.",
+  "description": "Compare Coles and Woolworths prices, then fill your cart in one click. For Australian shoppers.",
   "permissions": [
     "storage",
     "sidePanel"
