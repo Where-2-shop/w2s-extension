@@ -247,16 +247,16 @@ function renderResult(result, basket) {
       };
     } else if (s === "coles") {
       actionBtn.textContent = "Shop →";
-      actionBtn.onclick = async () => {
-        await chrome.storage.local.set({
-          pending_cart: {
-            store: "coles",
+      actionBtn.onclick = () => {
+        // Passe par le service worker comme Woolworths : une seule
+        // implémentation de "ouvrir le magasin avec le panier", donc une seule
+        // à maintenir. La copie locale qui vivait ici avait déjà divergé de
+        // celle du popup.
+        chrome.runtime.sendMessage(
+          { type: "OPEN_STORE", store: "coles",
             items: buildStoreItems("coles"),
-            missingItems: buildMissingItems("coles"),
-            ts: Date.now(),
-          },
-        });
-        chrome.tabs.create({ url: "https://www.coles.com.au/browse/fruit-vegetables" });
+            missingItems: buildMissingItems("coles") }
+        );
       };
     } else {
       // Aldi: downloadable list + DoorDash affiliate link

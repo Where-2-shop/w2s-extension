@@ -208,6 +208,18 @@ function renderResult(result, basket) {
       .filter(Boolean);
   }
 
+  // Les articles que ce magasin ne référence pas. buildStoreItems() les écarte
+  // — il n'y a rien à mettre au panier — donc sans cet envoi séparé ils
+  // disparaissent sans bruit : l'acheteur ne saurait jamais qu'il lui reste à
+  // les acheter ailleurs. Fusionnés dans le panneau « non ajoutés » côté
+  // magasin. Cette fonction manquait ici alors qu'elle existait dans panel.js :
+  // le popup perdait donc les articles manquants pour les DEUX enseignes.
+  function buildMissingItems(s) {
+    return items
+      .filter(line => !line[s]?.product)
+      .map(line => ({ name: line.source.name, qty: line.qty }));
+  }
+
   for (const s of ["coles", "woolworths", "aldi"]) {
     if (!totals[s]) continue;
     const isWinner = s === winner;
@@ -230,18 +242,21 @@ function renderResult(result, basket) {
       actionBtn.textContent = "Shop →";
       actionBtn.onclick = () => {
         chrome.runtime.sendMessage(
-          { type: "OPEN_STORE", store: "woolworths", items: buildStoreItems("woolworths") },
+          { type: "OPEN_STORE", store: "woolworths",
+            items: buildStoreItems("woolworths"),
+            missingItems: buildMissingItems("woolworths") },
           () => window.close()
         );
       };
     } else if (s === "coles") {
       actionBtn.textContent = "Shop →";
-      actionBtn.onclick = async () => {
-        await chrome.storage.local.set({
-          pending_cart: { store: "coles", items: buildStoreItems("coles"), ts: Date.now() },
-        });
-        chrome.tabs.create({ url: "https://www.coles.com.au/browse/fruit-vegetables" });
-        window.close();
+      actionBtn.onclick = () => {
+        chrome.runtime.sendMessage(
+          { type: "OPEN_STORE", store: "coles",
+            items: buildStoreItems("coles"),
+            missingItems: buildMissingItems("coles") },
+          () => window.close()
+        );
       };
     } else {
       // Aldi: downloadable list + DoorDash affiliate link
