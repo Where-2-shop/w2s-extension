@@ -274,7 +274,11 @@ function renderResult(result, basket) {
       const btnGroup = document.createElement("div");
       btnGroup.style.cssText = "display:flex;gap:4px;flex-shrink:0;";
       btnGroup.appendChild(actionBtn);
-      btnGroup.appendChild(doorDashBtn);
+      // Tant que le lien d'affiliation n'est pas renseigne, ne pas afficher le
+      // bouton : href = "YOUR_DOORDASH_AFFILIATE_LINK" est une URL relative,
+      // donc un clic menait sur une page inexistante de l'extension elle-meme.
+      // Le placeholder est parti en production en 1.1.5.
+      if (ALDI_DOORDASH_URL.startsWith("http")) btnGroup.appendChild(doorDashBtn);
 
       row.appendChild(info);
       row.appendChild(btnGroup);
