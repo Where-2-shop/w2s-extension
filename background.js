@@ -23,18 +23,67 @@ const STORE_URLS = {
   coles: "https://www.coles.com.au/browse/fruit-vegetables",
 };
 
+// La charge utile arrive notamment de la page where2shop.com.au via le pont de
+// content/where2shop.js : tout script exécuté sur cette page peut l'émettre.
+// On ne laisse donc passer vers les API Coles/Woolworths que des valeurs au
+// format attendu (identifiant numérique, quantité entière bornée, nom texte).
+const MAX_ITEMS = 200;
+const MAX_QTY = 99;
+
+function cleanQty(q) {
+  const n = Math.trunc(Number(q));
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(n, MAX_QTY);
+}
+
+function cleanName(n) {
+  return typeof n === "string" ? n.slice(0, 300) : "";
+}
+
+const isObj = it => !!it && typeof it === "object";
+const validId = it => /^\d{1,12}$/.test(String(it.product_id));
+
+function cleanItems(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .slice(0, MAX_ITEMS)
+    .filter(it => isObj(it) && validId(it))
+    .map(it => ({
+      product_id: String(it.product_id),
+      name: cleanName(it.name),
+      qty: cleanQty(it.qty),
+      substituted: it.substituted === true,
+    }));
+}
+
+function cleanMissing(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .slice(0, MAX_ITEMS)
+    .filter(isObj)
+    .map(it => ({ name: cleanName(it.name), qty: cleanQty(it.qty) }));
+}
+
 // Le script de contenu ne survit pas à la navigation qui suit ; c'est le
 // contenu de pending_cart, lu au chargement de la page marchande, qui porte
 // l'ordre. 10 min de péremption côté coles.js / woolworths.js.
 async function openStore({ store, items, missingItems }) {
+  // hasOwn : "__proto__" ou "constructor" ne doivent pas passer pour un magasin.
+  if (typeof store !== "string" || !Object.prototype.hasOwnProperty.call(STORE_URLS, store)) {
+    return { ok: false, reason: "no_url" };
+  }
   const url = STORE_URLS[store];
-  if (!url) return { ok: false, reason: "no_url" };
 
   await chrome.storage.local.set({
     pending_cart: {
       store,
-      items: items ?? [],
-      missingItems: missingItems ?? [],
+      items: cleanItems(items),
+      // Un article à l'identifiant invalide n'est pas ajouté au panier, mais il
+      // ne doit pas disparaître pour autant : il rejoint la liste « non ajoutés ».
+      missingItems: cleanMissing([
+        ...(Array.isArray(items) ? items.slice(0, MAX_ITEMS).filter(it => isObj(it) && !validId(it)) : []),
+        ...(Array.isArray(missingItems) ? missingItems : []),
+      ]),
       ts: Date.now(),
     },
   });

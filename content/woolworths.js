@@ -5,6 +5,17 @@ function esc(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
+// Une requête vers le site marchand qui ne répond jamais laissait l'overlay
+// plein écran en place indéfiniment. Le minuteur n'est pas annulé : il doit
+// aussi couvrir la lecture du corps (res.text()), et annuler une requête déjà
+// terminée est sans effet.
+const FETCH_TIMEOUT_MS = 15_000;
+function fetchWithTimeout(url, opts = {}) {
+  const ctrl = new AbortController();
+  setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  return fetch(url, { ...opts, signal: ctrl.signal });
+}
+
 const MISSED_KEY = "w2s_ww_missed";
 const MISSED_TTL = 7_200_000; // 2h
 
@@ -69,6 +80,10 @@ function showMissedPanel(missedItems) {
   document.body.appendChild(panel);
 }
 
+function removeOverlay() {
+  document.getElementById("w2s-overlay")?.remove();
+}
+
 // ── Overlay ────────────────────────────────────────────────────────────────
 function createOverlay() {
   const wrap = document.createElement("div");
@@ -88,6 +103,10 @@ function createOverlay() {
             W<span style="color:#e01a22;">2</span>S
           </span>
           <span style="font-size:15px;font-weight:600;color:#1a1917;">Adding to Woolworths cart…</span>
+          <button id="w2s-overlay-close" title="Close" style="
+            margin-left:auto;background:none;border:none;color:#888;
+            font-size:16px;cursor:pointer;padding:0 2px;line-height:1;
+          ">✕</button>
         </div>
         <div style="height:4px;background:#f0ede8;border-radius:2px;overflow:hidden;margin-bottom:14px;">
           <div id="w2s-bar" style="height:100%;width:0%;background:#007837;border-radius:2px;transition:width .3s;"></div>
@@ -98,6 +117,7 @@ function createOverlay() {
       </div>
     </div>
   `;
+  wrap.querySelector("#w2s-overlay-close").addEventListener("click", removeOverlay);
   document.body.appendChild(wrap);
   return wrap;
 }
@@ -137,7 +157,7 @@ async function addItem(item, xsrf) {
   if (xsrf) headers["X-XSRF-TOKEN"] = xsrf;
 
   try {
-    const res = await fetch("/api/v3/ui/trolley/update", {
+    const res = await fetchWithTimeout("/api/v3/ui/trolley/update", {
       method: "POST",
       credentials: "include",
       headers,
@@ -268,7 +288,7 @@ async function run() {
         <span style="font-weight:700;color:#007837;">✓ ${successes} added${altNote}</span>
         <a href="/shop/cart"
            style="font-size:12px;font-weight:700;color:#007837;text-decoration:underline;"
-           onclick="document.getElementById('w2s-overlay').remove()">View Trolley →</a>
+           id="w2s-view-cart">View Trolley →</a>
       </div>
       ${alternatives > 0 ? `
         <div style="margin-top:7px;font-size:11px;color:#aaa;line-height:1.4;">
@@ -285,8 +305,14 @@ async function run() {
           <div style="margin-top:7px;font-size:11px;color:#aaa;">The list stays visible on this page ↘</div>
         </div>` : ""}
     `;
+    doneEl.querySelector("#w2s-view-cart")?.addEventListener("click", removeOverlay);
     doneEl.style.display = "block";
   }
 }
 
-run().catch(err => console.error("[W2S] woolworths.js crashed:", err));
+// Un plantage (ex. « Extension context invalidated » après une mise à jour de
+// l'extension) ne doit jamais laisser l'overlay plein écran bloquer le site.
+run().catch(err => {
+  console.error("[W2S] woolworths.js crashed:", err);
+  removeOverlay();
+});
