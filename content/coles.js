@@ -204,11 +204,48 @@ function isIncapsulaResponse(text) {
   return text.includes("_Incapsula_Resource") || text.includes('CONTENT="noindex,nofollow"');
 }
 
-async function addItem(item, storeId, trolley) {
+// Coles asks shoppers to confirm they are 18+ before age-restricted products
+// (alcohol, tobacco) go in the trolley. That statement is the shopper's to
+// make: the extension used to send ageGateVerified: true on everyone's behalf.
+// Asked once, kept in storage; ID is still checked by Coles at delivery.
+const AGE_KEY = "w2s_coles_age_confirmed";
+
+async function askAgeConfirmation() {
+  try {
+    const saved = (await chrome.storage.local.get(AGE_KEY))[AGE_KEY];
+    if (typeof saved === "boolean") return saved;
+  } catch { /* storage unavailable: ask, don't remember */ }
+
+  const host = document.getElementById("w2s-status");
+  if (!host) return false;
+  const box = document.createElement("div");
+  box.id = "w2s-age";
+  box.style.cssText = "font-size:12px;color:#1a1917;background:#f7f5f1;border-radius:10px;padding:10px 12px;margin-bottom:10px;line-height:1.4;";
+  box.innerHTML = `
+    <div style="margin-bottom:8px;">Age-restricted products (alcohol, tobacco) can only be added if you confirm you are <b>18 or older</b>. Coles still checks ID at delivery or pick-up.</div>
+    <div style="display:flex;gap:8px;">
+      <button id="w2s-age-yes" style="flex:1;padding:7px;border:none;border-radius:8px;background:#e01a22;color:#fff;font-weight:600;cursor:pointer;">I'm 18 or older</button>
+      <button id="w2s-age-no" style="flex:1;padding:7px;border:1px solid #ccc;border-radius:8px;background:#fff;color:#1a1917;cursor:pointer;">Skip those items</button>
+    </div>`;
+  host.before(box);
+  const answer = await new Promise(resolve => {
+    box.querySelector("#w2s-age-yes").addEventListener("click", () => resolve(true));
+    box.querySelector("#w2s-age-no").addEventListener("click", () => resolve(false));
+    // Overlay closed while asking: nothing confirmed.
+    const obs = new MutationObserver(() => { if (!document.getElementById("w2s-age")) { obs.disconnect(); resolve(null); } });
+    obs.observe(document.body, { childList: true, subtree: true });
+  });
+  box.remove();
+  if (answer === null) return false;
+  try { await chrome.storage.local.set({ [AGE_KEY]: answer }); } catch { /* asked again next time */ }
+  return answer;
+}
+
+async function addItem(item, storeId, trolley, ageConfirmed = false) {
   // productId doit être un entier — l'API Coles retourne 200 sans rien ajouter si c'est une string
   const pid = parseInt(item.product_id, 10);
   const body = {
-    ageGateVerified: true,
+    ageGateVerified: ageConfirmed === true,
     swapBehaviour:   false,
     items: [{ actions: [{ type: "ADD", quantity: item.qty, productId: pid }] }],
   };
@@ -328,6 +365,8 @@ async function run() {
     console.warn("[W2S] trolley GET failed — proceeding without slot info");
   }
 
+  const ageConfirmed = await askAgeConfirmation();
+
   let successes = 0;
   let incapsulaBlocked = false;
   const failedItems = [];
@@ -335,7 +374,7 @@ async function run() {
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
     setStatus(item.name);
-    const result = await addItem(item, storeId, trolley);
+    const result = await addItem(item, storeId, trolley, ageConfirmed);
 
     if (result === "incapsula") {
       incapsulaBlocked = true;

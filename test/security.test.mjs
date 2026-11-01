@@ -32,11 +32,14 @@ async function newPage() {
 //             "ok"   = 200 + JSON vide
 // storageSetFails : chrome.storage.local.set rejette (contexte d'extension
 //             invalidé après une mise à jour, cas courant).
-async function runContentScript(file, store, { fetchMode, storageSetFails = false, items }) {
+// age : réponse déjà donnée à la question « 18 ans ou plus » (Coles) ; null = jamais posée.
+async function runContentScript(file, store, { fetchMode, storageSetFails = false, items, age = true, run = 120_000 }) {
   const page = await newPage();
   await page.clock.install();
-  await page.evaluate(({ store, fetchMode, storageSetFails, items }) => {
+  await page.evaluate(({ store, fetchMode, storageSetFails, items, age }) => {
     window.__store = { pending_cart: { store, items, missingItems: [], ts: Date.now() } };
+    if (age !== null) window.__store.w2s_coles_age_confirmed = age;
+    window.__bodies = [];
     window.chrome = { storage: { local: {
       get: async keys => {
         const o = {};
@@ -58,6 +61,7 @@ async function runContentScript(file, store, { fetchMode, storageSetFails = fals
       get: () => "XSRF-TOKEN=abc; fulfillmentStoreId=0001", configurable: true,
     });
     window.fetch = (_url, opts = {}) => new Promise((resolve, reject) => {
+      if (opts.body) window.__bodies.push(JSON.parse(opts.body));
       if (fetchMode === "ok") {
         resolve({ ok: true, status: 200, text: async () => "{}", json: async () => ({}) });
         return;
@@ -65,9 +69,9 @@ async function runContentScript(file, store, { fetchMode, storageSetFails = fals
       opts.signal?.addEventListener("abort", () =>
         reject(new DOMException("The operation was aborted.", "AbortError")));
     });
-  }, { store, fetchMode, storageSetFails, items });
+  }, { store, fetchMode, storageSetFails, items, age });
   await page.addScriptTag({ content: src(file) });
-  await page.clock.runFor(120_000);
+  await page.clock.runFor(run);
   return page;
 }
 
@@ -207,4 +211,41 @@ test("background: les articles reçus de la page sont normalisés", async () => 
   // L'article à l'identifiant invalide n'est pas envoyé au marchand, mais
   // reste signalé à l'acheteur.
   assert.deepEqual(cart.missingItems, [{ name: "x", qty: 1 }, { name: "<b>Bread</b>", qty: 1 }]);
+});
+
+// ── Vérification d'âge Coles : c'est l'utilisateur qui la déclare ─────────────
+const ageGateSent = page => page.evaluate(() => window.__bodies.filter(b => "ageGateVerified" in b).map(b => b.ageGateVerified));
+
+test("coles: sans réponse enregistrée, la question est posée et rien n'est ajouté avant", async () => {
+  const page = await runContentScript("content/coles.js", "coles", { fetchMode: "ok", items: ITEMS, age: null, run: 5_000 });
+  assert.ok(await page.$("#w2s-age"), "question 18+ affichée");
+  assert.deepEqual(await ageGateSent(page), [], "aucun article envoyé avant la réponse");
+  await page.close();
+});
+
+test("coles: « I'm 18 or older » → ageGateVerified true, et la réponse est mémorisée", async () => {
+  const page = await runContentScript("content/coles.js", "coles", { fetchMode: "ok", items: ITEMS, age: null, run: 5_000 });
+  await page.click("#w2s-age-yes");
+  await page.clock.runFor(60_000);
+  assert.deepEqual(await ageGateSent(page), [true]);
+  assert.equal(await page.evaluate(() => window.__store.w2s_coles_age_confirmed), true);
+  await page.close();
+});
+
+test("coles: « Skip those items » → ageGateVerified false (plus jamais true par défaut)", async () => {
+  const page = await runContentScript("content/coles.js", "coles", { fetchMode: "ok", items: ITEMS, age: null, run: 5_000 });
+  await page.click("#w2s-age-no");
+  await page.clock.runFor(60_000);
+  assert.deepEqual(await ageGateSent(page), [false]);
+  assert.equal(await page.evaluate(() => window.__store.w2s_coles_age_confirmed), false);
+  await page.close();
+});
+
+test("coles: réponse déjà donnée → pas de question, elle est réutilisée", async () => {
+  for (const age of [true, false]) {
+    const page = await runContentScript("content/coles.js", "coles", { fetchMode: "ok", items: ITEMS, age });
+    assert.equal(await page.$("#w2s-age"), null);
+    assert.deepEqual(await ageGateSent(page), [age]);
+    await page.close();
+  }
 });
