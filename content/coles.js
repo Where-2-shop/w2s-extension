@@ -5,6 +5,17 @@ function esc(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
+// Une requête vers le site marchand qui ne répond jamais laissait l'overlay
+// plein écran en place indéfiniment. Le minuteur n'est pas annulé : il doit
+// aussi couvrir la lecture du corps (res.text()), et annuler une requête déjà
+// terminée est sans effet.
+const FETCH_TIMEOUT_MS = 15_000;
+function fetchWithTimeout(url, opts = {}) {
+  const ctrl = new AbortController();
+  setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  return fetch(url, { ...opts, signal: ctrl.signal });
+}
+
 function getCookie(name) {
   const m = document.cookie.match(new RegExp("(?:^|;\\s*)" + name + "=([^;]+)"));
   return m ? decodeURIComponent(m[1]) : null;
@@ -82,6 +93,10 @@ function showMissedPanel(missedItems) {
   document.body.appendChild(panel);
 }
 
+function removeOverlay() {
+  document.getElementById("w2s-overlay")?.remove();
+}
+
 // ── Overlay ───────────────────────────────────────────────────────────────────
 function createOverlay() {
   const wrap = document.createElement("div");
@@ -101,6 +116,10 @@ function createOverlay() {
             W<span style="color:#e01a22;">2</span>S
           </span>
           <span style="font-size:15px;font-weight:600;color:#1a1917;">Adding to Coles cart…</span>
+          <button id="w2s-overlay-close" title="Close" style="
+            margin-left:auto;background:none;border:none;color:#888;
+            font-size:16px;cursor:pointer;padding:0 2px;line-height:1;
+          ">✕</button>
         </div>
         <div style="height:4px;background:#f0ede8;border-radius:2px;overflow:hidden;margin-bottom:14px;">
           <div id="w2s-bar" style="height:100%;width:0%;background:#e01a22;border-radius:2px;transition:width .3s;"></div>
@@ -111,6 +130,7 @@ function createOverlay() {
       </div>
     </div>
   `;
+  wrap.querySelector("#w2s-overlay-close").addEventListener("click", removeOverlay);
   document.body.appendChild(wrap);
   return wrap;
 }
@@ -163,7 +183,7 @@ function buildHeaders() {
 
 async function fetchTrolleyState(storeId) {
   try {
-    const res = await fetch(`/api/bff/trolley/store/${storeId}?sortBy=recentlyAdded`, {
+    const res = await fetchWithTimeout(`/api/bff/trolley/store/${storeId}?sortBy=recentlyAdded`, {
       method: "GET",
       credentials: "include",
       headers: buildHeaders(),
@@ -184,11 +204,48 @@ function isIncapsulaResponse(text) {
   return text.includes("_Incapsula_Resource") || text.includes('CONTENT="noindex,nofollow"');
 }
 
-async function addItem(item, storeId, trolley) {
+// Coles asks shoppers to confirm they are 18+ before age-restricted products
+// (alcohol, tobacco) go in the trolley. That statement is the shopper's to
+// make: the extension used to send ageGateVerified: true on everyone's behalf.
+// Asked once, kept in storage; ID is still checked by Coles at delivery.
+const AGE_KEY = "w2s_coles_age_confirmed";
+
+async function askAgeConfirmation() {
+  try {
+    const saved = (await chrome.storage.local.get(AGE_KEY))[AGE_KEY];
+    if (typeof saved === "boolean") return saved;
+  } catch { /* storage unavailable: ask, don't remember */ }
+
+  const host = document.getElementById("w2s-status");
+  if (!host) return false;
+  const box = document.createElement("div");
+  box.id = "w2s-age";
+  box.style.cssText = "font-size:12px;color:#1a1917;background:#f7f5f1;border-radius:10px;padding:10px 12px;margin-bottom:10px;line-height:1.4;";
+  box.innerHTML = `
+    <div style="margin-bottom:8px;">Age-restricted products (alcohol, tobacco) can only be added if you confirm you are <b>18 or older</b>. Coles still checks ID at delivery or pick-up.</div>
+    <div style="display:flex;gap:8px;">
+      <button id="w2s-age-yes" style="flex:1;padding:7px;border:none;border-radius:8px;background:#e01a22;color:#fff;font-weight:600;cursor:pointer;">I'm 18 or older</button>
+      <button id="w2s-age-no" style="flex:1;padding:7px;border:1px solid #ccc;border-radius:8px;background:#fff;color:#1a1917;cursor:pointer;">Skip those items</button>
+    </div>`;
+  host.before(box);
+  const answer = await new Promise(resolve => {
+    box.querySelector("#w2s-age-yes").addEventListener("click", () => resolve(true));
+    box.querySelector("#w2s-age-no").addEventListener("click", () => resolve(false));
+    // Overlay closed while asking: nothing confirmed.
+    const obs = new MutationObserver(() => { if (!document.getElementById("w2s-age")) { obs.disconnect(); resolve(null); } });
+    obs.observe(document.body, { childList: true, subtree: true });
+  });
+  box.remove();
+  if (answer === null) return false;
+  try { await chrome.storage.local.set({ [AGE_KEY]: answer }); } catch { /* asked again next time */ }
+  return answer;
+}
+
+async function addItem(item, storeId, trolley, ageConfirmed = false) {
   // productId doit être un entier — l'API Coles retourne 200 sans rien ajouter si c'est une string
   const pid = parseInt(item.product_id, 10);
   const body = {
-    ageGateVerified: true,
+    ageGateVerified: ageConfirmed === true,
     swapBehaviour:   false,
     items: [{ actions: [{ type: "ADD", quantity: item.qty, productId: pid }] }],
   };
@@ -199,7 +256,7 @@ async function addItem(item, storeId, trolley) {
   console.log(`[W2S Coles] PATCH /api/bff/trolley/store/${storeId}`, JSON.stringify(body));
 
   try {
-    const res = await fetch(`/api/bff/trolley/store/${storeId}`, {
+    const res = await fetchWithTimeout(`/api/bff/trolley/store/${storeId}`, {
       method: "PATCH",
       credentials: "include",
       headers: buildHeaders(),
@@ -308,6 +365,8 @@ async function run() {
     console.warn("[W2S] trolley GET failed — proceeding without slot info");
   }
 
+  const ageConfirmed = await askAgeConfirmation();
+
   let successes = 0;
   let incapsulaBlocked = false;
   const failedItems = [];
@@ -315,7 +374,7 @@ async function run() {
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
     setStatus(item.name);
-    const result = await addItem(item, storeId, trolley);
+    const result = await addItem(item, storeId, trolley, ageConfirmed);
 
     if (result === "incapsula") {
       incapsulaBlocked = true;
@@ -387,7 +446,7 @@ async function run() {
         <span style="font-weight:700;color:#e01a22;">✓ ${successes} item${successes > 1 ? "s" : ""} added</span>
         <a href="/checkout/cart"
            style="font-size:12px;font-weight:700;color:#e01a22;text-decoration:underline;"
-           onclick="document.getElementById('w2s-overlay').remove()">View Cart →</a>
+           id="w2s-view-cart">View Cart →</a>
       </div>
       ${notAdded.length ? `
         <div style="border-top:1px solid #f0ede8;padding-top:8px;">
@@ -402,7 +461,13 @@ async function run() {
     `;
 
   }
+  doneEl.querySelector("#w2s-view-cart")?.addEventListener("click", removeOverlay);
   doneEl.style.display = "block";
 }
 
-run().catch(err => console.error("[W2S] coles.js crashed:", err));
+// Un plantage (ex. « Extension context invalidated » après une mise à jour de
+// l'extension) ne doit jamais laisser l'overlay plein écran bloquer le site.
+run().catch(err => {
+  console.error("[W2S] coles.js crashed:", err);
+  removeOverlay();
+});

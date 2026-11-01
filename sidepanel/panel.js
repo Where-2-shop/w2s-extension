@@ -2,6 +2,7 @@
 "use strict";
 
 const API = "https://where2shop.com.au/api";
+const COMPARE_TIMEOUT_MS = 20_000;
 
 function esc(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
@@ -165,7 +166,10 @@ function downloadList(storeItems, storeName, total) {
 // ── Render result ─────────────────────────────────────────────────────────────
 function renderResult(result, basket) {
   const { totals, items } = result;
-  const winner = totals.cheaper;
+  // totals.cheaper vient de l'API et finit dans innerHTML (attribut class et
+  // texte) : seule une enseigne connue est acceptée, sinon « pas de gagnant ».
+  const winner = Object.prototype.hasOwnProperty.call(STORE_LABELS, totals.cheaper)
+    ? totals.cheaper : null;
 
   // Winner card
   const card = document.getElementById("winner-card");
@@ -313,8 +317,13 @@ function renderResult(result, basket) {
 // ── Compare ───────────────────────────────────────────────────────────────────
 async function compare(basket) {
   showOnly("view-comparing");
+  // Sans délai maximal, une API qui ne répond pas laisse le spinner tourner
+  // indéfiniment, sans message ni bouton « Try again ».
+  const ctrl = new AbortController();
+  setTimeout(() => ctrl.abort(), COMPARE_TIMEOUT_MS);
   try {
     const res = await fetch(`${API}/basket/compare`, {
+      signal: ctrl.signal,
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
