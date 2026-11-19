@@ -120,13 +120,16 @@ function setStatus(text) {
   if (el) el.textContent = text;
 }
 
+// Mêmes couleurs que le panneau Woolworths (demande de Romain, 19/11/2026) :
+// coche verte = ajouté, croix rouge = non ajouté / en rupture. L'ancien rouge
+// Coles pour « ajouté » et le gris pour « non ajouté » se lisaient à l'envers.
 function logItem(name, ok) {
   const el = document.getElementById("w2s-log");
   if (!el) return;
   const row = document.createElement("div");
   row.style.cssText = "display:flex;gap:6px;align-items:center;";
   row.innerHTML = `
-    <span style="color:${ok ? "#e01a22" : "#888"};font-weight:700;flex-shrink:0;">${ok ? "✓" : "✗"}</span>
+    <span style="color:${ok ? "#007837" : "#e01a22"};font-weight:700;flex-shrink:0;">${ok ? "✓" : "✗"}</span>
     <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(name)}</span>`;
   el.appendChild(row);
   el.scrollTop = el.scrollHeight;

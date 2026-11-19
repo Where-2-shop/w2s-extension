@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Where2Shop Australia",
   "short_name": "W2S",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "description": "Compare Coles and Woolworths prices, then fill your cart in one click. For Australian shoppers.",
   "permissions": [
     "storage",
